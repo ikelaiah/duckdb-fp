@@ -228,3 +228,4 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - [DuckDB Team](https://duckdb.org/) for the amazing database engine.
 - [Free Pascal Dev Team](https://www.freepascal.org/) for the Pascal compiler.
 - [Lazarus IDE Team](https://www.lazarus-ide.org/) for such an amazing IDE.
+- [rednose🇳🇱🇪🇺](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368) of the Unofficial ree Pascal Discord for providing the initial DuckDB Pascal bindings  via [Chet](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368).
