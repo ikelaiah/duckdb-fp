@@ -210,11 +210,6 @@ lazbuild Demo02.lpr
 ./Demo02
 ```
 
-## Requirements
-
-- FreePascal 3.2.0 or later
-- DuckDB library (tested with version 0.9.x)
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
