@@ -2,6 +2,33 @@
 
 A clean and intuitive wrapper for DuckDB in FreePascal, providing easy database operations and DataFrame-like result handling.
 
+## ⚠️ Work in Progress
+
+This project is currently under active development. While the basic functionality is working, you may encounter:
+- Incomplete features
+- API changes
+- Missing documentation
+- Potential bugs
+
+Feel free to:
+- Report issues
+- Suggest improvements
+- Contribute code
+- Test and provide feedback
+
+Current development focus:
+- [ ] Complete DataFrame functionality
+- [ ] Add more examples
+- [ ] Improve error handling
+- [ ] Add comprehensive unit tests
+- [ ] Document all features
+- [ ] Add performance optimizations
+
+Last tested with:
+- FreePascal 3.2.2
+- DuckDB 1.1.2
+- Lazarus 3.6
+
 ## Overview
 
 This wrapper provides a simple interface to work with DuckDB in FreePascal applications, featuring a DataFrame-like structure for handling query results similar to R or Python pandas.
