@@ -1,0 +1,56 @@
+# Lazarus/FreePascal specific
+*.lps
+*.compiled
+*.o
+*.or
+*.ppu
+*.rst
+*.rsj
+*.dbg
+*.dcu
+lib/
+backup/
+debug/
+release/
+*.exe
+
+
+# DuckDB specific
+*.db
+*.duckdb
+
+# Project specific
+examples/*/backup/
+examples/*/lib/
+examples/*/debug/
+examples/*/release/
+examples/*/*.exe
+examples/*/*.csv
+
+# IDE specific
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# Operating System specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.bak
+*.tmp
+*~
+*.swp
+*.swo
+
+# Log files
+*.log
+
+# Unit test output
+test/output/
