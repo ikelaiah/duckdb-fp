@@ -22,7 +22,6 @@ Current development focus:
 - [ ] Improve error handling
 - [ ] Add comprehensive unit tests
 - [ ] Document all features
-- [ ] Add performance optimizations
 
 Last tested with:
 - FreePascal 3.2.2
