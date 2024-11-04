@@ -110,7 +110,6 @@ The `TDuckFrame` class provides:
 - Easy access to data by column name or index
 - Pretty printing of results
 - Head/Tail operations
-- Data filtering
 - CSV export capabilities
 
 ## Error Handling
