@@ -57,7 +57,7 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
      DuckDB.Wrapper, DuckDB.DataFrame;
    ```
 
-## Quick Reference
+## Quick Reference - Open, Close, Query
 
 ```pascal
 uses
@@ -99,6 +99,46 @@ begin
 
   finally
     DB.Free;  // Automatically closes connection
+  end;
+end;
+```
+
+## Quick Reference - Query and Analyze Results
+
+```pascal
+uses
+  DuckDB.Wrapper, DuckDB.DataFrame;
+
+var
+  DB: TDuckDBConnection;
+  DF: TDuckFrame;
+begin
+  // Create and open in-memory database
+  DB := TDuckDBConnection.Create;
+  try
+    DB.Open();
+    
+    // Execute query and analyze results
+    DF := DB.Query('SELECT * FROM my_table');
+    try
+      // Display comprehensive statistics
+      DF.Describe;
+      
+      // Check for missing data
+      var NullCounts := DF.NullCount;
+      try
+        NullCounts.Print;
+      finally
+        NullCounts.Free;
+      end;
+      
+      // Show DataFrame structure and memory usage
+      DF.Info;
+    finally
+      DF.Free;
+    end;
+  finally
+    DB.Free;
   end;
 end;
 ```
@@ -232,46 +272,4 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - [Free Pascal Dev Team](https://www.freepascal.org/) for the Pascal compiler.
 - [Lazarus IDE Team](https://www.lazarus-ide.org/) for such an amazing IDE.
 - [rednose🇳🇱🇪🇺](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368) of the Unofficial ree Pascal Discord for providing the initial DuckDB Pascal bindings  via [Chet](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368).
-
-## Quick Reference
-
-```pascal
-uses
-  DuckDB.Wrapper, DuckDB.DataFrame;
-
-var
-  DB: TDuckDBConnection;
-  DF: TDuckFrame;
-begin
-  // Create and open in-memory database
-  DB := TDuckDBConnection.Create;
-  try
-    DB.Open();
-    
-    // Execute query and analyze results
-    DF := DB.Query('SELECT * FROM my_table');
-    try
-      // Display comprehensive statistics
-      DF.Describe;
-      
-      // Check for missing data
-      var NullCounts := DF.NullCount;
-      try
-        NullCounts.Print;
-      finally
-        NullCounts.Free;
-      end;
-      
-      // Show DataFrame structure and memory usage
-      DF.Info;
-    finally
-      DF.Free;
-    end;
-  finally
-    DB.Free;
-  end;
-end;
-```
-
-
 
