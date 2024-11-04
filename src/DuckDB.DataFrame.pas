@@ -10,56 +10,60 @@ uses
 type
   EDuckDBError = class(Exception);
 
-  { Column types supported by DuckDB }
+  { Column types that map to DuckDB's native types }
   TDuckDBColumnType = (
-    dctUnknown,
-    dctBoolean,
-    dctTinyInt,
-    dctSmallInt,
-    dctInteger,
-    dctBigInt,
-    dctFloat,
-    dctDouble,
-    dctDate,
-    dctTimestamp,
-    dctString,
-    dctBlob
+    dctUnknown,    // Unknown or unsupported type
+    dctBoolean,    // Boolean (true/false)
+    dctTinyInt,    // 8-bit integer
+    dctSmallInt,   // 16-bit integer
+    dctInteger,    // 32-bit integer
+    dctBigInt,     // 64-bit integer
+    dctFloat,      // Single-precision floating point
+    dctDouble,     // Double-precision floating point
+    dctDate,       // Date without time
+    dctTimestamp,  // Date with time
+    dctString,     // Variable-length string
+    dctBlob        // Binary large object
   );
 
-  { Column information }
+  { Column information including metadata and data }
   TDuckDBColumn = record
-    Name: string;
-    DataType: TDuckDBColumnType;
-    Data: array of Variant;
+    Name: string;           // Column name from query
+    DataType: TDuckDBColumnType;  // Column's data type
+    Data: array of Variant; // Actual column data
   end;
 
+  { Statistical measures for numeric columns }
   TColumnStats = record
-    Count: Integer;
-    Mean: Double;
-    StdDev: Double;
-    Skewness: Double;
-    Kurtosis: Double;
-    NonMissingRate: Double;
-    Min: Variant;
-    Q1: Double;
-    Median: Double;
-    Q3: Double;
-    Max: Variant;
-    NullCount: Integer;
+    Count: Integer;         // Total number of rows
+    Mean: Double;           // Average value
+    StdDev: Double;        // Standard deviation
+    Skewness: Double;      // Measure of distribution asymmetry (0 is symmetric)
+    Kurtosis: Double;      // Measure of "tailedness" compared to normal distribution
+    NonMissingRate: Double; // Percentage of non-null values (1.0 = no nulls)
+    Min: Variant;          // Minimum value
+    Q1: Double;            // First quartile (25th percentile)
+    Median: Double;        // Median (50th percentile)
+    Q3: Double;            // Third quartile (75th percentile)
+    Max: Variant;          // Maximum value
+    NullCount: Integer;    // Number of null values
   end;
 
-  { DataFrame class for handling query results }
+  { DataFrame class for handling query results in a columnar format }
   TDuckFrame = class
   private
-    FColumns: array of TDuckDBColumn;
-    FRowCount: Integer;
+    FColumns: array of TDuckDBColumn;  // Array of columns
+    FRowCount: Integer;                // Number of rows in the DataFrame
     
+    // Helper functions for data access and calculations
     function GetColumnCount: Integer;
     function GetColumn(Index: Integer): TDuckDBColumn;
     function GetColumnByName(const Name: string): TDuckDBColumn;
     function GetValue(Row, Col: Integer): Variant;
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
+    
+    // Type mapping and statistical calculations
     function MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
     function IsNumericColumn(const Col: TDuckDBColumn): Boolean;
     function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
@@ -70,26 +74,30 @@ type
     constructor Create;
     destructor Destroy; override;
     
-    procedure LoadFromResult(AResult: pduckdb_result);
-    procedure Clear;
-    procedure Print(MaxRows: Integer = 10);
-    procedure SaveToCSV(const FileName: string);
+    { Core DataFrame operations }
+    procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
+    procedure Clear;                                    // Clear all data
+    procedure Print(MaxRows: Integer = 10);            // Print DataFrame contents
+    procedure SaveToCSV(const FileName: string);       // Export to CSV file
     
+    { Data analysis methods }
+    function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
+    function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
+    function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
+    procedure Describe;                                // Show statistical summary
+    function NullCount: TDuckFrame;                   // Count null values per column
+    procedure Info;                                    // Show DataFrame structure info
+    
+    { Properties for data access }
     property RowCount: Integer read FRowCount;
     property ColumnCount: Integer read GetColumnCount;
     property Columns[Index: Integer]: TDuckDBColumn read GetColumn;
     property ColumnsByName[const Name: string]: TDuckDBColumn read GetColumnByName;
     property Values[Row, Col: Integer]: Variant read GetValue;
     property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
-    
-    function Head(Count: Integer = 5): TDuckFrame;
-    function Tail(Count: Integer = 5): TDuckFrame;
-    function Select(const ColumnNames: array of string): TDuckFrame;
-    procedure Describe;
-    function NullCount: TDuckFrame;
-    procedure Info;
   end;
 
+{ Helper function for sorting }
 procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
 
 implementation
@@ -485,18 +493,40 @@ end;
 function TDuckFrame.CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
 var
   I: Integer;
-  Sum, SumSq, SumCube, SumQuad: Double;
+  Sum, SumSq, SumCube, SumQuad: Double;  // For moment calculations
   Value: Double;
-  ValidCount: Integer;
-  ValidValues: array of Double;
-  Mean, Variance: Double;
+  ValidCount: Integer;                    // Count of non-null values
+  ValidValues: array of Double;           // Array for percentile calculations
+  Mean, Variance: Double;                 // For central tendency and spread
 begin
+  // Initialize all variables
+  Sum := 0;
+  SumSq := 0;
+  SumCube := 0;
+  SumQuad := 0;
+  Mean := 0;
+  Variance := 0;
+  ValidCount := 0;
+  Value := 0;
+  
+  // Initialize results structure
   Result.Count := FRowCount;
   Result.NullCount := 0;
   Result.Min := Null;
   Result.Max := Null;
+  Result.Mean := 0;
+  Result.StdDev := 0;
+  Result.Skewness := 0;
+  Result.Kurtosis := 0;
+  Result.NonMissingRate := 0;
+  Result.Q1 := 0;
+  Result.Median := 0;
+  Result.Q3 := 0;
   
-  // First pass: Count nulls, find min/max, calculate mean
+  // First pass: Calculate basic statistics
+  // - Count null values
+  // - Find min/max
+  // - Calculate sum for mean
   Sum := 0;
   ValidCount := 0;
   
@@ -510,6 +540,7 @@ begin
       Inc(ValidCount);
       Sum := Sum + Value;
       
+      // Update min/max
       if VarIsNull(Result.Min) or (Value < Result.Min) then
         Result.Min := Value;
       if VarIsNull(Result.Max) or (Value > Result.Max) then
@@ -517,12 +548,12 @@ begin
     end;
   end;
 
-  // Calculate mean and non-missing rate
+  // Calculate mean and data quality metrics
   if ValidCount > 0 then
   begin
     Mean := Sum / ValidCount;
     Result.Mean := Mean;
-    Result.NonMissingRate := ValidCount / FRowCount;
+    Result.NonMissingRate := ValidCount / FRowCount;  // Percentage of non-null values
   end
   else
   begin
@@ -530,7 +561,10 @@ begin
     Result.NonMissingRate := 0;
   end;
 
-  // Second pass: Calculate variance, skewness, and kurtosis
+  // Second pass: Calculate higher moments
+  // - Variance (2nd moment)
+  // - Skewness (3rd moment)
+  // - Kurtosis (4th moment)
   SumSq := 0;
   SumCube := 0;
   SumQuad := 0;
@@ -546,19 +580,20 @@ begin
     end;
   end;
 
+  // Calculate final statistics if we have enough data
   if ValidCount > 1 then
   begin
-    // Calculate variance
-    Variance := SumSq / (ValidCount - 1);
+    // Standard deviation
+    Variance := SumSq / (ValidCount - 1);  // Use N-1 for sample variance
     Result.StdDev := Sqrt(Variance);
     
-    // Calculate skewness
+    // Skewness (requires at least 3 values)
     if (ValidCount > 2) and (Result.StdDev > 0) then
       Result.Skewness := (SumCube / ValidCount) / Power(Result.StdDev, 3)
     else
       Result.Skewness := 0;
       
-    // Calculate kurtosis
+    // Kurtosis (requires at least 4 values)
     if (ValidCount > 3) and (Result.StdDev > 0) then
       Result.Kurtosis := ((SumQuad / ValidCount) / Sqr(Variance)) - 3  // Excess kurtosis
     else
@@ -571,7 +606,7 @@ begin
     Result.Kurtosis := 0;
   end;
 
-  // Calculate quartiles (reuse existing code)
+  // Calculate quartiles using sorted data
   SetLength(ValidValues, ValidCount);
   ValidCount := 0;
   for I := 0 to FRowCount - 1 do
@@ -586,9 +621,9 @@ begin
   if ValidCount > 0 then
   begin
     QuickSort(ValidValues, 0, ValidCount - 1);
-    Result.Q1 := CalculatePercentile(ValidValues, 0.25);
-    Result.Median := CalculatePercentile(ValidValues, 0.50);
-    Result.Q3 := CalculatePercentile(ValidValues, 0.75);
+    Result.Q1 := CalculatePercentile(ValidValues, 0.25);  // First quartile
+    Result.Median := CalculatePercentile(ValidValues, 0.50);  // Second quartile (median)
+    Result.Q3 := CalculatePercentile(ValidValues, 0.75);  // Third quartile
   end
   else
   begin
@@ -598,24 +633,26 @@ begin
   end;
 end;
 
-function TDuckFrame.CalculatePercentile(const Values: array of Double; 
-  Percentile: Double): Double;
+function TDuckFrame.CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
 var
   N: Integer;
   Position: Double;
-  Lower, Upper: Integer;
+  Lower: Integer;
   Delta: Double;
 begin
+  // Handle empty or single-value arrays
   N := Length(Values);
   if N = 0 then
     Exit(0);
   if N = 1 then
     Exit(Values[0]);
 
+  // Calculate interpolation position
   Position := Percentile * (N - 1);
   Lower := Trunc(Position);
   Delta := Position - Lower;
   
+  // Handle edge case and interpolate
   if Lower + 1 >= N then
     Result := Values[N - 1]
   else
