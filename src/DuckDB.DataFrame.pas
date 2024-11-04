@@ -10,9 +10,6 @@ uses
 type
   EDuckDBError = class(Exception);
 
-  { Function type for filtering }
-  TFilterFunction = function(RowIndex: Integer): Boolean of object;
-
   { Column types supported by DuckDB }
   TDuckDBColumnType = (
     dctUnknown,
@@ -69,7 +66,6 @@ type
     function Head(Count: Integer = 5): TDuckFrame;
     function Tail(Count: Integer = 5): TDuckFrame;
     function Select(const ColumnNames: array of string): TDuckFrame;
-    function Filter(FilterFunc: TFilterFunction): TDuckFrame;
   end;
 
 implementation
@@ -221,41 +217,6 @@ begin
   except
     Result.Free;
     raise;
-  end;
-end;
-
-function TDuckFrame.Filter(FilterFunc: TFilterFunction): TDuckFrame;
-var
-  Col, Row, NewRow: Integer;
-  MatchingRows: TList;
-begin
-  Result := TDuckFrame.Create;
-  MatchingRows := TList.Create;
-  try
-    // Find matching rows
-    for Row := 0 to FRowCount - 1 do
-      if FilterFunc(Row) then
-        MatchingRows.Add(Pointer(Row));
-
-    // Create new DataFrame with matching rows
-    Result.FRowCount := MatchingRows.Count;
-    SetLength(Result.FColumns, Length(FColumns));
-    
-    for Col := 0 to Length(FColumns) - 1 do
-    begin
-      Result.FColumns[Col].Name := FColumns[Col].Name;
-      Result.FColumns[Col].DataType := FColumns[Col].DataType;
-      SetLength(Result.FColumns[Col].Data, MatchingRows.Count);
-      
-      for NewRow := 0 to MatchingRows.Count - 1 do
-      begin
-        Row := Integer(MatchingRows[NewRow]);
-        Result.FColumns[Col].Data[NewRow] := FColumns[Col].Data[Row];
-      end;
-    end;
-    
-  finally
-    MatchingRows.Free;
   end;
 end;
 
