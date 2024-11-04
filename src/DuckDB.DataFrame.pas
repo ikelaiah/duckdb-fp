@@ -5,7 +5,7 @@ unit DuckDB.DataFrame;
 interface
 
 uses
-  SysUtils, Classes, Variants, libduckdb;
+  SysUtils, Classes, Variants, libduckdb, Math, TypInfo;
 
 type
   EDuckDBError = class(Exception);
@@ -33,6 +33,21 @@ type
     Data: array of Variant;
   end;
 
+  TColumnStats = record
+    Count: Integer;
+    Mean: Double;
+    StdDev: Double;
+    Skewness: Double;
+    Kurtosis: Double;
+    NonMissingRate: Double;
+    Min: Variant;
+    Q1: Double;
+    Median: Double;
+    Q3: Double;
+    Max: Variant;
+    NullCount: Integer;
+  end;
+
   { DataFrame class for handling query results }
   TDuckFrame = class
   private
@@ -46,6 +61,10 @@ type
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
     function MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
+    function IsNumericColumn(const Col: TDuckDBColumn): Boolean;
+    function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
+    function CalculatePercentile(const Values: array of Double; 
+      Percentile: Double): Double;
     
   public
     constructor Create;
@@ -66,7 +85,12 @@ type
     function Head(Count: Integer = 5): TDuckFrame;
     function Tail(Count: Integer = 5): TDuckFrame;
     function Select(const ColumnNames: array of string): TDuckFrame;
+    procedure Describe;
+    function NullCount: TDuckFrame;
+    procedure Info;
   end;
+
+procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
 
 implementation
 
@@ -450,6 +474,325 @@ begin
   finally
     CloseFile(F);
   end;
+end;
+
+function TDuckFrame.IsNumericColumn(const Col: TDuckDBColumn): Boolean;
+begin
+  Result := Col.DataType in [dctTinyInt, dctSmallInt, dctInteger, dctBigInt, 
+                            dctFloat, dctDouble];
+end;
+
+function TDuckFrame.CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
+var
+  I: Integer;
+  Sum, SumSq, SumCube, SumQuad: Double;
+  Value: Double;
+  ValidCount: Integer;
+  ValidValues: array of Double;
+  Mean, Variance: Double;
+begin
+  Result.Count := FRowCount;
+  Result.NullCount := 0;
+  Result.Min := Null;
+  Result.Max := Null;
+  
+  // First pass: Count nulls, find min/max, calculate mean
+  Sum := 0;
+  ValidCount := 0;
+  
+  for I := 0 to FRowCount - 1 do
+  begin
+    if VarIsNull(Col.Data[I]) then
+      Inc(Result.NullCount)
+    else
+    begin
+      Value := Col.Data[I];
+      Inc(ValidCount);
+      Sum := Sum + Value;
+      
+      if VarIsNull(Result.Min) or (Value < Result.Min) then
+        Result.Min := Value;
+      if VarIsNull(Result.Max) or (Value > Result.Max) then
+        Result.Max := Value;
+    end;
+  end;
+
+  // Calculate mean and non-missing rate
+  if ValidCount > 0 then
+  begin
+    Mean := Sum / ValidCount;
+    Result.Mean := Mean;
+    Result.NonMissingRate := ValidCount / FRowCount;
+  end
+  else
+  begin
+    Result.Mean := 0;
+    Result.NonMissingRate := 0;
+  end;
+
+  // Second pass: Calculate variance, skewness, and kurtosis
+  SumSq := 0;
+  SumCube := 0;
+  SumQuad := 0;
+  
+  for I := 0 to FRowCount - 1 do
+  begin
+    if not VarIsNull(Col.Data[I]) then
+    begin
+      Value := Col.Data[I] - Mean;
+      SumSq := SumSq + Sqr(Value);
+      SumCube := SumCube + Value * Value * Value;
+      SumQuad := SumQuad + Value * Value * Value * Value;
+    end;
+  end;
+
+  if ValidCount > 1 then
+  begin
+    // Calculate variance
+    Variance := SumSq / (ValidCount - 1);
+    Result.StdDev := Sqrt(Variance);
+    
+    // Calculate skewness
+    if (ValidCount > 2) and (Result.StdDev > 0) then
+      Result.Skewness := (SumCube / ValidCount) / Power(Result.StdDev, 3)
+    else
+      Result.Skewness := 0;
+      
+    // Calculate kurtosis
+    if (ValidCount > 3) and (Result.StdDev > 0) then
+      Result.Kurtosis := ((SumQuad / ValidCount) / Sqr(Variance)) - 3  // Excess kurtosis
+    else
+      Result.Kurtosis := 0;
+  end
+  else
+  begin
+    Result.StdDev := 0;
+    Result.Skewness := 0;
+    Result.Kurtosis := 0;
+  end;
+
+  // Calculate quartiles (reuse existing code)
+  SetLength(ValidValues, ValidCount);
+  ValidCount := 0;
+  for I := 0 to FRowCount - 1 do
+  begin
+    if not VarIsNull(Col.Data[I]) then
+    begin
+      ValidValues[ValidCount] := Col.Data[I];
+      Inc(ValidCount);
+    end;
+  end;
+
+  if ValidCount > 0 then
+  begin
+    QuickSort(ValidValues, 0, ValidCount - 1);
+    Result.Q1 := CalculatePercentile(ValidValues, 0.25);
+    Result.Median := CalculatePercentile(ValidValues, 0.50);
+    Result.Q3 := CalculatePercentile(ValidValues, 0.75);
+  end
+  else
+  begin
+    Result.Q1 := 0;
+    Result.Median := 0;
+    Result.Q3 := 0;
+  end;
+end;
+
+function TDuckFrame.CalculatePercentile(const Values: array of Double; 
+  Percentile: Double): Double;
+var
+  N: Integer;
+  Position: Double;
+  Lower, Upper: Integer;
+  Delta: Double;
+begin
+  N := Length(Values);
+  if N = 0 then
+    Exit(0);
+  if N = 1 then
+    Exit(Values[0]);
+
+  Position := Percentile * (N - 1);
+  Lower := Trunc(Position);
+  Delta := Position - Lower;
+  
+  if Lower + 1 >= N then
+    Result := Values[N - 1]
+  else
+    Result := Values[Lower] + Delta * (Values[Lower + 1] - Values[Lower]);
+end;
+
+procedure TDuckFrame.Describe;
+var
+  Col: Integer;
+  Stats: TColumnStats;
+  ColWidths: array of Integer;
+  StatNames: array[0..11] of string = (
+    'count', 'mean', 'std', 'skew', 'kurt', 'non-miss',
+    'min', '25%', '50%', '75%', 'max', 'null');
+  I: Integer;
+  MinStr, MaxStr: string;
+begin
+  if Length(FColumns) = 0 then
+  begin
+    WriteLn('Empty DataFrame');
+    Exit;
+  end;
+
+  // Calculate column widths
+  SetLength(ColWidths, Length(FColumns) + 1);
+  ColWidths[0] := 8; // Width for stat names column
+
+  // Print header
+  Write(Format('%-*s ', [ColWidths[0], '']));
+  for Col := 0 to Length(FColumns) - 1 do
+  begin
+    if IsNumericColumn(FColumns[Col]) then
+    begin
+      ColWidths[Col + 1] := Max(Length(FColumns[Col].Name), 12);
+      Write(Format('%-*s ', [ColWidths[Col + 1], FColumns[Col].Name]));
+    end;
+  end;
+  WriteLn;
+
+  // Print statistics for each numeric column
+  for I := 0 to High(StatNames) do
+  begin
+    Write(Format('%-*s ', [ColWidths[0], StatNames[I]]));
+    
+    for Col := 0 to Length(FColumns) - 1 do
+    begin
+      if not IsNumericColumn(FColumns[Col]) then
+        Continue;
+
+      Stats := CalculateColumnStats(FColumns[Col]);
+      
+      case I of
+        0: Write(Format('%-*d ', [ColWidths[Col + 1], Stats.Count]));
+        1: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.Mean]));
+        2: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.StdDev]));
+        3: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.Skewness]));
+        4: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.Kurtosis]));
+        5: Write(Format('%-*s ', [ColWidths[Col + 1], Format('%.2f%%', [Stats.NonMissingRate * 100])]));
+        6: begin
+             if VarIsNull(Stats.Min) then
+               MinStr := 'NULL'
+             else
+               MinStr := VarToStr(Stats.Min);
+             Write(Format('%-*s ', [ColWidths[Col + 1], MinStr]));
+           end;
+        7: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.Q1]));
+        8: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.Median]));
+        9: Write(Format('%-*.2f ', [ColWidths[Col + 1], Stats.Q3]));
+        10: begin
+              if VarIsNull(Stats.Max) then
+                MaxStr := 'NULL'
+              else
+                MaxStr := VarToStr(Stats.Max);
+              Write(Format('%-*s ', [ColWidths[Col + 1], MaxStr]));
+            end;
+        11: Write(Format('%-*d ', [ColWidths[Col + 1], Stats.NullCount]));
+      end;
+    end;
+    WriteLn;
+  end;
+end;
+
+function TDuckFrame.NullCount: TDuckFrame;
+var
+  Col: Integer;
+  Row: Integer;
+  NullCounts: array of Integer;
+begin
+  Result := TDuckFrame.Create;
+  try
+    SetLength(NullCounts, Length(FColumns));
+    
+    // Calculate null counts for each column
+    for Col := 0 to Length(FColumns) - 1 do
+    begin
+      NullCounts[Col] := 0;
+      for Row := 0 to FRowCount - 1 do
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          Inc(NullCounts[Col]);
+    end;
+
+    // Create result DataFrame with single row
+    Result.FRowCount := 1;
+    SetLength(Result.FColumns, Length(FColumns));
+    
+    for Col := 0 to Length(FColumns) - 1 do
+    begin
+      Result.FColumns[Col].Name := FColumns[Col].Name;
+      Result.FColumns[Col].DataType := dctInteger;
+      SetLength(Result.FColumns[Col].Data, 1);
+      Result.FColumns[Col].Data[0] := NullCounts[Col];  // Store as integer
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+procedure TDuckFrame.Info;
+var
+  Col: Integer;
+  TotalMemory: Int64;
+  NullsInColumn: Integer;
+  Row: Integer;
+begin
+  WriteLn(Format('DataFrame: %d rows × %d columns', [FRowCount, Length(FColumns)]));
+  WriteLn;
+  
+  WriteLn('Columns:');
+  for Col := 0 to Length(FColumns) - 1 do
+  begin
+    // Count nulls manually
+    NullsInColumn := 0;
+    for Row := 0 to FRowCount - 1 do
+      if VarIsNull(FColumns[Col].Data[Row]) then
+        Inc(NullsInColumn);
+        
+    WriteLn(Format('  %s: %s (nulls: %d)',
+      [FColumns[Col].Name, 
+       GetEnumName(TypeInfo(TDuckDBColumnType), Ord(FColumns[Col].DataType)), 
+       NullsInColumn]));
+  end;
+  
+  // Estimate memory usage (rough calculation)
+  TotalMemory := 0;
+  for Col := 0 to Length(FColumns) - 1 do
+    TotalMemory := TotalMemory + (FRowCount * SizeOf(Variant));
+    
+  WriteLn;
+  WriteLn(Format('Memory usage: %d bytes (%.2f MB)', 
+                 [TotalMemory, TotalMemory / (1024 * 1024)]));
+end;
+
+procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
+var
+  Lo, Hi: Integer;
+  Pivot, T: Double;
+begin
+  Lo := iLo;
+  Hi := iHi;
+  Pivot := A[(Lo + Hi) div 2];
+
+  repeat
+    while A[Lo] < Pivot do Inc(Lo);
+    while A[Hi] > Pivot do Dec(Hi);
+    if Lo <= Hi then
+    begin
+      T := A[Lo];
+      A[Lo] := A[Hi];
+      A[Hi] := T;
+      Inc(Lo);
+      Dec(Hi);
+    end;
+  until Lo > Hi;
+
+  if Hi > iLo then QuickSort(A, iLo, Hi);
+  if Lo < iHi then QuickSort(A, Lo, iHi);
 end;
 
 end. 
