@@ -1,6 +1,6 @@
 unit DuckDB.Wrapper;
 
-{$mode objfpc}{$H+}
+{$mode objfpc}{$H+}{$J-}
 
 interface
 

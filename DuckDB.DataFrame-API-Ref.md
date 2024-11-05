@@ -15,7 +15,9 @@
   - [Data Analysis Methods](#data-analysis-methods)
     - [Describe](#describe)
     - [NullCount](#nullcount)
-    - [Info](#info) 
+    - [Info](#info)
+    - [Statistical Analysis](#statistical-analysis)
+  - [Correlation Analysis](#correlation-analysis)
 
 ## TDuckFrame
 
@@ -132,19 +134,52 @@ procedure SaveToCSV(const FileName: string);
 ```pascal
 procedure Describe;
 ```
-- Displays comprehensive summary statistics for numeric columns including:
-  - count: Total number of rows
+- Displays comprehensive summary statistics with separate analysis for:
+  
+  Factor (Categorical) Variables:
+  - skim_variable: Column name
+  - n_missing: Number of missing values
+  - complete_rate: Percentage of non-missing values
+  - ordered: Whether the categorical variable is ordered
+  - n_unique: Number of unique values
+  - top_counts: Most frequent values and their counts
+
+  Numeric Variables:
+  - skim_variable: Column name
+  - n_missing: Number of missing values
+  - complete_rate: Percentage of non-missing values
   - mean: Average value
-  - std: Standard deviation
+  - sd: Standard deviation
+  - min: Minimum value
+  - q1: First quartile (25th percentile)
+  - median: Median (50th percentile)
+  - q3: Third quartile (75th percentile)
+  - max: Maximum value
   - skew: Skewness (measure of distribution asymmetry)
   - kurt: Kurtosis (measure of distribution "tailedness")
-  - non-miss: Percentage of non-missing values
-  - min: Minimum value
-  - 25%: First quartile
-  - 50%: Median
-  - 75%: Third quartile
-  - max: Maximum value
-  - null: Number of null values
+
+Example output:
+```
+Statistical Summary:
+-------------------
+Number of rows: 4
+Number of columns: 4
+
+Column type frequency:
+  factor    1
+  numeric   3
+
+-- Variable type: factor
+skim_variable    n_missing  complete_rate ordered   n_unique
+name             0          1.000         FALSE     4
+    Top counts: Bob: 1, Alice: 1, John: 1
+
+-- Variable type: numeric
+skim_variable    n_missing  complete_rate mean      sd        min       q1        median    q3        max       skew      kurt
+id               0          1.000         2.500     1.291     1.000     1.750     2.500     3.250     4.000     0.000     -2.080
+age              1          0.750         33.333    10.408    25.000    27.500    30.000    37.500    45.000     0.996     0.000
+salary           1          0.750         68333.333 16072.751 50000.000 62500.000 75000.000 77500.000 80000.000 -1.190     0.000
+```
 
 ```pascal
 function NullCount: TDuckFrame;
@@ -161,6 +196,75 @@ procedure Info;
   - Column names and their data types
   - Number of null values per column
   - Memory usage in both bytes and MB
+
+### Statistical Analysis
+
+```pascal
+function Corr: TDuckFrame;
+```
+- Default correlation method (currently uses Pearson)
+- Returns a new DataFrame containing the correlation coefficients
+- Caller must free the returned DataFrame
+
+```pascal
+function CorrPearson: TDuckFrame;
+```
+- Calculates the Pearson correlation matrix for all numeric columns
+- Returns a new DataFrame containing the correlation coefficients
+- Measures linear correlation between variables
+- Best for linear relationships between variables
+- Sensitive to outliers
+- Caller must free the returned DataFrame
+
+```pascal
+function CorrSpearman: TDuckFrame;
+```
+- Calculates the Spearman rank correlation matrix for all numeric columns
+- Returns a new DataFrame containing the correlation coefficients
+- Measures monotonic relationships (including non-linear)
+- More robust to outliers than Pearson correlation
+- Better for ordinal data and non-linear relationships
+- Caller must free the returned DataFrame
+
+Example usage:
+```pascal
+var
+  PearsonCorr, SpearmanCorr: TDuckFrame;
+begin
+  // Calculate Pearson correlation
+  PearsonCorr := DF.CorrPearson;
+  try
+    WriteLn('Pearson Correlation:');
+    PearsonCorr.Print;
+  finally
+    PearsonCorr.Free;
+  end;
+  
+  // Calculate Spearman correlation
+  SpearmanCorr := DF.CorrSpearman;
+  try
+    WriteLn('Spearman Correlation:');
+    SpearmanCorr.Print;
+  finally
+    SpearmanCorr.Free;
+  end;
+end;
+```
+
+When to use each correlation method:
+
+Pearson Correlation:
+- Variables have linear relationships
+- Data is normally distributed
+- No significant outliers
+- Variables are continuous
+
+Spearman Correlation:
+- Non-linear but monotonic relationships
+- Ordinal data
+- Presence of outliers
+- Non-normal distributions
+- More robust general-purpose correlation
 
 ## Usage Examples
 
@@ -284,36 +388,21 @@ Example output:
 ```
 Statistical Summary:
 -------------------
-         id           age          salary
-count    4            4            4
-mean     2.50         33.33        68333.33
-std      1.29         10.41        16072.75
-skew     0.00         0.29         -0.34
-kurt     -2.08        0.00         0.00
-non-miss 100.00%      75.00%       75.00%
-min      1            25           50000
-25%      1.75         27.50        62500.00
-50%      2.50         30.00        75000.00
-75%      3.25         37.50        77500.00
-max      4            45           80000
-null     0            1            1
+Number of rows: 4
+Number of columns: 4
 
-Null Value Counts:
-----------------
-id  name  age  salary
--- ---- --- ------
-0   0     1    1
+Column type frequency:
+  factor    1
+  numeric   3
 
-DataFrame Info:
---------------
-DataFrame: 4 rows × 4 columns
+-- Variable type: factor
+skim_variable    n_missing  complete_rate ordered   n_unique
+name             0          1.000         FALSE     4
+    Top counts: Bob: 1, Alice: 1, John: 1
 
-Columns:
-  id: dctInteger (nulls: 0)
-  name: dctString (nulls: 0)
-  age: dctInteger (nulls: 1)
-  salary: dctDouble (nulls: 1)
-
-Memory usage: 384 bytes (0.00 MB)
-Press Enter to exit...
+-- Variable type: numeric
+skim_variable    n_missing  complete_rate mean      sd        min       q1        median    q3        max       skew      kurt
+id               0          1.000         2.500     1.291     1.000     1.750     2.500     3.250     4.000     0.000     -2.080
+age              1          0.750         33.333    10.408    25.000    27.500    30.000    37.500    45.000     0.996     0.000
+salary           1          0.750         68333.333 16072.751 50000.000 62500.000 75000.000 77500.000 80000.000 -1.190     0.000
 ```

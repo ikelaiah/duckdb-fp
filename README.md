@@ -40,6 +40,12 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
 - Error handling
 - Support for both in-memory and file-based databases
 - Transaction support
+- Advanced DataFrame operations:
+  - Statistical analysis and summaries
+  - Missing data handling (DropNA, FillNA)
+  - Correlation analysis (Pearson and Spearman)
+  - Data visualization (histograms)
+  - Frequency analysis (unique value counts)
 
 ## Installation
 
@@ -152,9 +158,11 @@ The `TDuckFrame` class provides:
 - Head/Tail operations
 - CSV export capabilities
 - Comprehensive statistical analysis:
+  - Separate analysis for factor (categorical) and numeric columns
   - Basic statistics (mean, standard deviation)
   - Distribution analysis (quartiles, skewness, kurtosis)
   - Data quality metrics (null counts, non-missing rates)
+  - Top value counts for categorical data
   - Memory usage reporting
 
 ## Error Handling
