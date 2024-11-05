@@ -1,4 +1,4 @@
-# DuckDB FreePascal Wrapper
+# DuckDB for FreePascal: An Intuitive Database Wrapper
 
 A clean and intuitive wrapper for DuckDB in FreePascal, providing easy database operations and DataFrame-like result handling.
 
