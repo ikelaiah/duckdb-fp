@@ -462,17 +462,51 @@ function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFr
 - Supports different union modes for handling column mismatches
 
 ### Union Modes
-The `TUnionMode` enumeration controls how column mismatches are handled:
+The `TUnionMode` enumeration controls how DataFrame combinations handle column matching:
+
 ```pascal
 type
   TUnionMode = (
-    umStrict,      // Requires exact column match (names and types)
-    umNameOnly,    // Matches by column names only, attempts type conversion
-    umLeftBased,   // Uses left DataFrame's structure, ignores extra right columns
-    umRightBased,  // Uses right DataFrame's structure, ignores extra left columns
-    umIntersect,   // Uses only columns present in both DataFrames
-    umAll          // Uses all columns, fills missing with NULL
+    umStrict,    // Most conservative: requires exact match of column names and types
+    umCommon,    // Intersection mode: only includes columns that exist in both frames
+    umAll        // Most inclusive: includes all columns from both frames, fills missing with NULL
   );
+```
+
+#### Mode Details:
+
+1. `umStrict` - Most conservative mode
+   - Requires exact match of column names and types
+   - Ensures data consistency
+   - Best for when you know both DataFrames should have identical structure
+   - Similar to SQL's UNION with strict type checking
+
+2. `umCommon` - Intersection mode
+   - Only includes columns that exist in both DataFrames
+   - Flexible when DataFrames have different structures but share some columns
+   - Similar to SQL's NATURAL JOIN behavior
+   - Good for when you want to safely combine DataFrames with different schemas
+
+3. `umAll` - Most inclusive mode
+   - Includes all columns from both DataFrames
+   - Missing values are filled with NULL
+   - Most flexible but might need careful handling of NULL values
+   - Similar to SQL's FULL OUTER JOIN concept
+   - Useful when you want to preserve all data from both frames
+
+Example:
+```pascal
+var
+  DF1, DF2, Combined: TDuckFrame;
+begin
+  // Combine keeping only common columns
+  Combined := DF1.Union(DF2, umCommon);
+  try
+    Combined.Print;
+  finally
+    Combined.Free;
+  end;
+end;
 ```
 
 ### Examples
