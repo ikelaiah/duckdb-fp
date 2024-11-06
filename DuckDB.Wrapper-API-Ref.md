@@ -11,6 +11,7 @@
     - [Transaction Management](#transaction-management)
     - [CSV Operations](#csv-operations)
     - [Error Handling](#error-handling)
+    - [Data Import/Export](#data-importexport)
 
 ## TDuckDBConnection
 
@@ -121,6 +122,71 @@ class function ReadCSV(const FileName: string): TDuckFrame;
     end;
   end;
   ```
+
+### Data Import/Export
+
+```pascal
+class function ReadCSV(const FileName: string): TDuckFrame;
+```
+- Reads a CSV file into a DataFrame using DuckDB's automatic type inference
+- Returns a new DataFrame (caller must free)
+- Raises `EDuckDBError` if file not found
+
+```pascal
+procedure WriteToTable(const DataFrame: TDuckFrame; const TableName: string; 
+  const SchemaName: string = 'main');
+```
+- Writes a DataFrame to a table in the currently connected database
+- Uses the existing connection (in-memory if `DatabasePath` is empty, file-based otherwise)
+- Creates the table if it doesn't exist
+- Uses transactions for data integrity
+- Parameters:
+  - `DataFrame`: Source DataFrame to write
+  - `TableName`: Name of the target table
+  - `SchemaName`: Optional schema name (defaults to 'main')
+- Raises `EDuckDBError` if:
+  - Not connected to database
+  - DataFrame is empty
+  - SQL errors occur during write
+
+Example usage:
+```pascal
+var
+  DB: TDuckDBConnection;
+  DF: TDuckFrame;
+begin
+  // For in-memory database:
+  DB := TDuckDBConnection.Create;
+  try
+    DB.Open;  // Creates in-memory database
+    // Read CSV into DataFrame
+    DF := TDuckDBConnection.ReadCSV('data.csv');
+    try
+      DB.WriteToTable(DF, 'mytable');
+    finally
+      DF.Free;
+    end;
+  finally
+    DB.Free;
+  end;
+  
+  // For file-based database:
+  DB := TDuckDBConnection.Create('mydb.db');  // or DB.Open('mydb.db');
+  try
+    // Read CSV into DataFrame
+    DF := TDuckDBConnection.ReadCSV('data.csv');
+    try
+      DB.WriteToTable(DF, 'mytable');
+      // Or with custom schema:
+      // DB.WriteToTable(DF, 'mytable', 'custom_schema');
+    finally
+      DF.Free;
+    end;
+  finally
+    DB.Free;
+  end;
+end;
+```
 
 ### Error Handling
 

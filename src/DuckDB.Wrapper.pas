@@ -43,6 +43,8 @@ type
     procedure Rollback;
     
     class function ReadCSV(const FileName: string): TDuckFrame;
+    procedure WriteToTable(const DataFrame: TDuckFrame; const TableName: string; 
+      const SchemaName: string = 'main');
   end;
 
 implementation
@@ -227,6 +229,97 @@ begin
     Result := DB.Query(SQLQuery);
   finally
     DB.Free;
+  end;
+end;
+
+procedure TDuckDBConnection.WriteToTable(const DataFrame: TDuckFrame; const TableName: string; 
+  const SchemaName: string = 'main');
+var
+  SQL: string;
+  Col: Integer;
+  Row: Integer;
+  Value: Variant;
+  
+  // Helper function to properly escape and quote values
+  function EscapeValue(const V: Variant): string;
+  begin
+    if VarIsNull(V) then
+      Exit('NULL');
+      
+    case VarType(V) of
+      varString, varUString:
+        Result := '''' + StringReplace(VarToStr(V), '''', '''''', [rfReplaceAll]) + '''';
+      varBoolean:
+        Result := IfThen(V, 'TRUE', 'FALSE');
+      else
+        Result := VarToStr(V);
+    end;
+  end;
+  
+begin
+  RaiseIfNotConnected;
+  
+  if DataFrame.ColumnCount = 0 then
+    raise EDuckDBError.Create('Cannot write empty DataFrame to table');
+    
+  // Create table if not exists
+  SQL := Format('CREATE TABLE IF NOT EXISTS %s.%s (', [SchemaName, TableName]);
+  
+  for Col := 0 to DataFrame.ColumnCount - 1 do
+  begin
+    if Col > 0 then
+      SQL := SQL + ', ';
+    SQL := SQL + Format('%s %s', [
+      DataFrame.Columns[Col].Name,
+      GetDuckDBTypeString(DataFrame.Columns[Col].DataType)
+    ]);
+  end;
+  SQL := SQL + ');';
+  
+  ExecuteSQL(SQL);
+  
+  // Insert data in batches
+  BeginTransaction;
+  try
+    for Row := 0 to DataFrame.RowCount - 1 do
+    begin
+      SQL := Format('INSERT INTO %s.%s VALUES (', [SchemaName, TableName]);
+      
+      for Col := 0 to DataFrame.ColumnCount - 1 do
+      begin
+        if Col > 0 then
+          SQL := SQL + ', ';
+        Value := DataFrame.Values[Row, Col];
+        SQL := SQL + EscapeValue(Value);
+      end;
+      
+      SQL := SQL + ');';
+      ExecuteSQL(SQL);
+    end;
+    
+    Commit;
+  except
+    Rollback;
+    raise;
+  end;
+end;
+
+// Add helper function to map column types to DuckDB types
+function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
+begin
+  case ColumnType of
+    dctBoolean: Result := 'BOOLEAN';
+    dctTinyInt: Result := 'TINYINT';
+    dctSmallInt: Result := 'SMALLINT';
+    dctInteger: Result := 'INTEGER';
+    dctBigInt: Result := 'BIGINT';
+    dctFloat: Result := 'FLOAT';
+    dctDouble: Result := 'DOUBLE';
+    dctDate: Result := 'DATE';
+    dctTimestamp: Result := 'TIMESTAMP';
+    dctString: Result := 'VARCHAR';
+    dctBlob: Result := 'BLOB';
+    else Result := 'VARCHAR';  // Default to VARCHAR for unknown types
   end;
 end;
 end. 
