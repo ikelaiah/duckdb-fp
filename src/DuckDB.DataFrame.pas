@@ -10,6 +10,33 @@ uses
 type
   EDuckDBError = class(Exception);
 
+
+  {
+  Union modes
+
+  1. umStrict - Most conservative mode
+    - Requires exact match of column names and types
+    - Ensures data consistency
+    - Best for when you know both DataFrames should have identical structure
+    - Similar to SQL's UNION with strict type checking
+  2. umCommon - Intersection mode
+    - Only includes columns that exist in both DataFrames
+    - Flexible when DataFrames have different structures but share some columns
+    - Similar to SQL's NATURAL JOIN behavior
+    - Good for when you want to safely combine DataFrames with different schemas
+  3. umAll - Most inclusive mode
+    - Includes all columns from both DataFrames
+    - Missing values are filled with NULL
+    - Most flexible but might need careful handling of NULL values
+    - Similar to SQL's FULL OUTER JOIN concept
+    - Useful when you want to preserve all data from both frames
+  }
+  TUnionMode = (
+    umStrict,    // Strict mode: columns must match exactly
+    umCommon,    // Common columns: only include columns that appear in both frames
+    umAll        // All columns: include all columns from both frames
+  );
+
   { Column types that map to DuckDB's native types }
   TDuckDBColumnType = (
     dctUnknown,    // Unknown or unsupported type
@@ -52,6 +79,8 @@ type
     TopCounts: string;      // Most frequent values and their counts
   end;
 
+  TStringArray = array of string;  // Add this type declaration at the unit level
+
   { DataFrame class for handling query results in a columnar format }
   TDuckFrame = class
   private
@@ -72,6 +101,14 @@ type
     function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
     function CalculatePercentile(const Values: array of Double; 
       Percentile: Double): Double;
+    
+    // Move these functions to private section
+    function GetCommonColumns(const Other: TDuckFrame): TStringArray;
+    function GetAllColumns(const Other: TDuckFrame): TStringArray;
+    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
+    
+    function HasSameStructure(const Other: TDuckFrame): Boolean;
+    function GetColumnNames: TStringArray;
     
   public
     constructor Create;
@@ -110,6 +147,10 @@ type
     property ColumnsByName[const Name: string]: TDuckDBColumn read GetColumnByName;
     property Values[Row, Col: Integer]: Variant read GetValue;
     property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
+
+    function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+    function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+    function Distinct: TDuckFrame;
   end;
 
 { Helper function for sorting }
@@ -1453,6 +1494,236 @@ begin
   except
     Result.Free;
     raise;
+  end;
+end;
+
+function TDuckFrame.TryConvertValue(const Value: Variant; 
+  FromType, ToType: TDuckDBColumnType): Variant;
+begin
+  if VarIsNull(Value) then
+    Exit(Null);
+    
+  try
+    case ToType of
+      dctBoolean:
+        Result := Boolean(Value);
+      dctTinyInt, dctSmallInt, dctInteger:
+        Result := Integer(Value);
+      dctBigInt:
+        Result := Int64(Value);
+      dctFloat, dctDouble:
+        Result := Double(Value);
+      dctString:
+        Result := VarToStr(Value);
+      else
+        Result := Value;  // Keep original if no conversion needed
+    end;
+  except
+    Result := Null;  // Return NULL if conversion fails
+  end;
+end;
+
+function TDuckFrame.GetCommonColumns(const Other: TDuckFrame): TStringArray;
+var
+  CommonColumns: TStringArray;
+  I: Integer;
+begin
+  SetLength(CommonColumns, 0);
+  for I := 0 to High(FColumns) do
+  begin
+    if Other.FindColumnIndex(FColumns[I].Name) >= 0 then
+    begin
+      SetLength(CommonColumns, Length(CommonColumns) + 1);
+      CommonColumns[High(CommonColumns)] := FColumns[I].Name;
+    end;
+  end;
+  Result := CommonColumns;
+end;
+
+function TDuckFrame.GetAllColumns(const Other: TDuckFrame): TStringArray;
+var
+  AllColumns: TStringArray;
+  I: Integer;
+begin
+  SetLength(AllColumns, Length(FColumns) + Length(Other.FColumns));
+  for I := 0 to High(FColumns) do
+    AllColumns[I] := FColumns[I].Name;
+  for I := 0 to High(Other.FColumns) do
+    AllColumns[Length(FColumns) + I] := Other.FColumns[I].Name;
+  Result := AllColumns;
+end;
+
+function TDuckFrame.Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+begin
+  // First combine all rows
+  Result := UnionAll(Other, Mode);
+  // Then remove duplicates
+  Result := Result.Distinct;
+end;
+
+function TDuckFrame.UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+var
+  Row, Col, DestCol: Integer;
+  SelectedColumns: TStringArray;
+  ColMap: specialize TDictionary<string, Integer>;
+  SourceCol: Integer;
+begin
+  Result := TDuckFrame.Create;
+  ColMap := specialize TDictionary<string, Integer>.Create;
+  try
+    // Determine which columns to use based on mode
+    case Mode of
+      umStrict:
+        if not HasSameStructure(Other) then
+          raise EDuckDBError.Create('Cannot union DataFrames with different structures')
+        else
+          SelectedColumns := GetColumnNames;
+          
+      umCommon:
+        SelectedColumns := GetCommonColumns(Other);
+        
+      umAll:
+        SelectedColumns := GetAllColumns(Other);
+    end;
+    
+    // Setup result structure - simple addition of row counts
+    Result.FRowCount := FRowCount + Other.FRowCount;
+    SetLength(Result.FColumns, Length(SelectedColumns));
+    
+    // Create column mapping
+    for Col := 0 to High(SelectedColumns) do
+    begin
+      Result.FColumns[Col].Name := SelectedColumns[Col];
+      
+      // Determine column type
+      if FindColumnIndex(SelectedColumns[Col]) >= 0 then
+        Result.FColumns[Col].DataType := GetColumnByName(SelectedColumns[Col]).DataType
+      else
+        Result.FColumns[Col].DataType := Other.GetColumnByName(SelectedColumns[Col]).DataType;
+      
+      SetLength(Result.FColumns[Col].Data, Result.FRowCount);
+      ColMap.Add(SelectedColumns[Col], Col);
+    end;
+    
+    // Copy all rows from first DataFrame
+    for Row := 0 to FRowCount - 1 do
+      for Col := 0 to High(SelectedColumns) do
+      begin
+        DestCol := ColMap[SelectedColumns[Col]];
+        SourceCol := FindColumnIndex(SelectedColumns[Col]);
+        
+        if SourceCol >= 0 then
+          Result.FColumns[DestCol].Data[Row] := TryConvertValue(
+            FColumns[SourceCol].Data[Row],
+            FColumns[SourceCol].DataType,
+            Result.FColumns[DestCol].DataType)
+        else
+          Result.FColumns[DestCol].Data[Row] := Null;
+      end;
+    
+    // Copy all rows from second DataFrame
+    for Row := 0 to Other.FRowCount - 1 do
+      for Col := 0 to High(SelectedColumns) do
+      begin
+        DestCol := ColMap[SelectedColumns[Col]];
+        SourceCol := Other.FindColumnIndex(SelectedColumns[Col]);
+        
+        if SourceCol >= 0 then
+          Result.FColumns[DestCol].Data[FRowCount + Row] := TryConvertValue(
+            Other.FColumns[SourceCol].Data[Row],
+            Other.FColumns[SourceCol].DataType,
+            Result.FColumns[DestCol].DataType)
+        else
+          Result.FColumns[DestCol].Data[FRowCount + Row] := Null;
+      end;
+  finally
+    ColMap.Free;
+  end;
+end;
+
+function TDuckFrame.HasSameStructure(const Other: TDuckFrame): Boolean;
+var
+  I: Integer;
+begin
+  Result := Length(FColumns) = Length(Other.FColumns);
+  if not Result then
+    Exit;
+    
+  for I := 0 to High(FColumns) do
+  begin
+    Result := Result and 
+      (FColumns[I].Name = Other.FColumns[I].Name) and
+      (FColumns[I].DataType = Other.FColumns[I].DataType);
+    if not Result then
+      Exit;
+  end;
+end;
+
+function TDuckFrame.GetColumnNames: TStringArray;
+var
+  I: Integer;
+begin
+  SetLength(Result, Length(FColumns));
+  for I := 0 to High(FColumns) do
+    Result[I] := FColumns[I].Name;
+end;
+
+function TDuckFrame.Distinct: TDuckFrame;
+var
+  Row, Col, ResultRow: Integer;
+  UniqueRows: specialize TDictionary<string, Boolean>;
+  RowKey: string;
+begin
+  Result := TDuckFrame.Create;
+  UniqueRows := specialize TDictionary<string, Boolean>.Create;
+  try
+    // First pass: count unique rows
+    Result.FRowCount := 0;
+    
+    for Row := 0 to FRowCount - 1 do
+    begin
+      RowKey := '';
+      for Col := 0 to High(FColumns) do
+        RowKey := RowKey + VarToStr(FColumns[Col].Data[Row]);
+      
+      if not UniqueRows.ContainsKey(RowKey) then
+      begin
+        UniqueRows.Add(RowKey, True);
+        Inc(Result.FRowCount);
+      end;
+    end;
+    
+    // Setup result structure
+    SetLength(Result.FColumns, Length(FColumns));
+    UniqueRows.Clear; // Reset for second pass
+    
+    // Initialize columns
+    for Col := 0 to High(FColumns) do
+    begin
+      Result.FColumns[Col].Name := FColumns[Col].Name;
+      Result.FColumns[Col].DataType := FColumns[Col].DataType;
+      SetLength(Result.FColumns[Col].Data, Result.FRowCount);
+    end;
+    
+    // Second pass: copy unique rows
+    ResultRow := 0;
+    for Row := 0 to FRowCount - 1 do
+    begin
+      RowKey := '';
+      for Col := 0 to High(FColumns) do
+        RowKey := RowKey + VarToStr(FColumns[Col].Data[Row]);
+      
+      if not UniqueRows.ContainsKey(RowKey) then
+      begin
+        UniqueRows.Add(RowKey, True);
+        // Copy row data
+        for Col := 0 to High(FColumns) do
+          Result.FColumns[Col].Data[ResultRow] := FColumns[Col].Data[Row];
+        Inc(ResultRow);
+      end;
+    end;
+  finally
+    UniqueRows.Free;
   end;
 end;
 

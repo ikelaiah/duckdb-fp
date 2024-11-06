@@ -47,6 +47,55 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
 - Pretty printing with customizable row limits
 - Column selection and filtering
 - Descriptive statistics
+- DataFrame Operations
+  - Data Analysis: `Describe`, `Info`, `NullCount`, `Head`, `Tail`
+  - Statistical Analysis: `CorrPearson`, `CorrSpearman`
+  - Data Export: `SaveToCSV`
+  - DataFrame Combinations:
+    - `Union`: Combines DataFrames and removes duplicates (like SQL UNION)
+    - `UnionAll`: Combines DataFrames keeping all rows (like SQL UNION ALL)
+    - `Distinct`: Removes duplicate rows from DataFrame
+    - Flexible union modes for handling different column structures:
+      - `umStrict`: Requires exact match of column names and types
+      - `umCommon`: Only includes columns that exist in both frames
+      - `umAll`: Includes all columns from both frames, filling missing values with NULL
+
+## Sample Datasets
+
+The wrapper includes a `TDuckDBSampleData` class that provides easy access to common datasets for testing and learning:
+
+```pascal
+uses
+  DuckDB.Wrapper, DuckDB.DataFrame, DuckDB.SampleData;
+
+var
+  DF: TDuckFrame;
+begin
+  // Load the MTCars dataset
+  DF := TDuckDBSampleData.LoadData(sdMtcars);
+  try
+    WriteLn('Dataset Info:');
+    DF.Info;
+    
+    WriteLn('First 5 rows:');
+    DF.Head(5).Print;
+    
+    WriteLn('Summary Statistics:');
+    DF.Describe;
+  finally
+    DF.Free;
+  end;
+end;
+```
+
+Available datasets:
+- MTCars (Motor Trend Car Road Tests)
+- Iris (Fisher's Iris Flower Dataset)
+- Titanic (Passenger Survival Data)
+- Diamonds (Diamond Prices and Characteristics)
+- Gapminder (World Development Indicators)
+- MPG (Fuel Economy Data)
+- NYC Flights (2013 Flight Data)
 
 ## Installation
 
@@ -64,7 +113,9 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
      DuckDB.Wrapper, DuckDB.DataFrame;
    ```
 
-## Quick Reference - Open, Close, Query
+## Quick Reference
+
+### Open, Close, Query
 
 ```pascal
 uses
@@ -110,7 +161,7 @@ begin
 end;
 ```
 
-## Quick Reference - Query and Analyze Results
+### Query and Analyze Results
 
 ```pascal
 uses
@@ -143,6 +194,35 @@ begin
       DF.Info;
     finally
       DF.Free;
+    end;
+  finally
+    DB.Free;
+  end;
+end;
+```
+
+### Combining DataFrames
+```pascal
+var
+  DB: TDuckDBConnection;
+  DF1, DF2, Combined: TDuckFrame;
+begin
+  DB := TDuckDBConnection.Create('example.db');
+  try
+    // Create two DataFrames from queries
+    DF1 := DB.Query('SELECT * FROM sales_2022');
+    DF2 := DB.Query('SELECT * FROM sales_2023');
+    try
+      // Combine with duplicate removal
+      Combined := DF1.Union(DF2);
+      try
+        Combined.SaveToCSV('combined_sales.csv');
+      finally
+        Combined.Free;
+      end;
+    finally
+      DF1.Free;
+      DF2.Free;
     end;
   finally
     DB.Free;
@@ -262,10 +342,12 @@ lazbuild Demo02.lpr
 ./Demo02
 ```
 
+
 ## API Reference
 
 - [DuckDB.Wrapper API Reference](DuckDB.Wrapper-API-Ref.md)
 - [DuckDB.DataFrame API Reference](DuckDB.DataFrame-API-Ref.md)
+- [DuckDB.SampleData API Reference](DuckDB.SampleData-API-Ref.md)
 
 ## Contributing
 

@@ -5,7 +5,7 @@ unit DuckDB.Wrapper;
 interface
 
 uses
-  SysUtils, Classes, libduckdb, DuckDB.DataFrame;
+  SysUtils, Classes, libduckdb, DuckDB.DataFrame, Math, Variants;
 
 type
   EDuckDBError = class(Exception);
@@ -47,7 +47,19 @@ type
       const SchemaName: string = 'main');
   end;
 
+// Move function declaration to interface section
+function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
+
 implementation
+
+// Helper function for boolean to string conversion
+function BoolToString(const Value: Boolean): string;
+begin
+  if Value then
+    Result := 'TRUE'
+  else
+    Result := 'FALSE';
+end;
 
 { TDuckDBConnection }
 
@@ -239,6 +251,7 @@ var
   Col: Integer;
   Row: Integer;
   Value: Variant;
+  VType: Integer;
   
   // Helper function to properly escape and quote values
   function EscapeValue(const V: Variant): string;
@@ -246,14 +259,13 @@ var
     if VarIsNull(V) then
       Exit('NULL');
       
-    case VarType(V) of
-      varString, varUString:
-        Result := '''' + StringReplace(VarToStr(V), '''', '''''', [rfReplaceAll]) + '''';
-      varBoolean:
-        Result := IfThen(V, 'TRUE', 'FALSE');
-      else
-        Result := VarToStr(V);
-    end;
+    VType := VarType(V);
+    if (VType = varString) or (VType = varUString) or (VType = varOleStr) then
+      Result := '''' + StringReplace(VarToStr(V), '''', '''''', [rfReplaceAll]) + ''''
+    else if VType = varBoolean then
+      Result := BoolToString(Boolean(V))  // Use helper function instead of IfThen
+    else
+      Result := VarToStr(V);
   end;
   
 begin
@@ -304,7 +316,7 @@ begin
   end;
 end;
 
-// Add helper function to map column types to DuckDB types
+// Move implementation of GetDuckDBTypeString here
 function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
 begin
   case ColumnType of

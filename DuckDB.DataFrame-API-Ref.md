@@ -19,6 +19,12 @@
     - [Info](#info)
     - [Statistical Analysis](#statistical-analysis)
   - [Correlation Analysis](#correlation-analysis)
+  - [DataFrame Combination Methods](#dataframe-combination-methods)
+    - [Union Operations](#union-operations)
+    - [Union Modes](#union-modes)
+    - [Examples](#examples)
+    - [Type Conversion](#type-conversion)
+    - [Notes](#notes)
 
 ## TDuckFrame
 
@@ -435,3 +441,102 @@ id               0          1.000         2.500     1.291     1.000     1.750   
 age              1          0.750         33.333    10.408    25.000    27.500    30.000    37.500    45.000     0.996     0.000
 salary           1          0.750         68333.333 16072.751 50000.000 62500.000 75000.000 77500.000 80000.000 -1.190     0.000
 ```
+
+## DataFrame Combination Methods
+
+### Union Operations
+
+```pascal
+function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+```
+- Combines two DataFrames and removes duplicate rows (like SQL's `UNION DISTINCT`)
+- Returns a new DataFrame (caller must free)
+- Supports different union modes for handling column mismatches
+- NULL values are handled properly in duplicate detection
+
+```pascal
+function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+```
+- Combines two DataFrames keeping all rows including duplicates (like SQL's `UNION ALL`)
+- Returns a new DataFrame (caller must free)
+- Supports different union modes for handling column mismatches
+
+### Union Modes
+The `TUnionMode` enumeration controls how column mismatches are handled:
+```pascal
+type
+  TUnionMode = (
+    umStrict,      // Requires exact column match (names and types)
+    umNameOnly,    // Matches by column names only, attempts type conversion
+    umLeftBased,   // Uses left DataFrame's structure, ignores extra right columns
+    umRightBased,  // Uses right DataFrame's structure, ignores extra left columns
+    umIntersect,   // Uses only columns present in both DataFrames
+    umAll          // Uses all columns, fills missing with NULL
+  );
+```
+
+### Examples
+
+```pascal
+var
+  DB: TDuckDBConnection;
+  DF1, DF2, Combined: TDuckFrame;
+begin
+  DB := TDuckDBConnection.Create(':memory:');
+  try
+    // Create two sample DataFrames
+    DF1 := DB.Query('SELECT 1 as id, ''A'' as name');
+    DF2 := DB.Query('SELECT 2 as id, ''B'' as name');
+    
+    try
+      // Combine with duplicate removal (like SQL UNION)
+      Combined := DF1.Union(DF2);
+      try
+        Combined.Print;
+      finally
+        Combined.Free;
+      end;
+      
+      // Combine keeping all rows (like SQL UNION ALL)
+      Combined := DF1.UnionAll(DF2);
+      try
+        Combined.Print;
+      finally
+        Combined.Free;
+      end;
+      
+      // Remove duplicates from a single DataFrame
+      Combined := DF1.Distinct;
+      try
+        Combined.Print;
+      finally
+        Combined.Free;
+      end;
+    finally
+      DF1.Free;
+      DF2.Free;
+    end;
+  finally
+    DB.Free;
+  end;
+end;
+```
+
+Union modes allow flexible handling of different DataFrame structures:
+- `umStrict`: Most conservative, requires exact column match
+- `umCommon`: Only includes shared columns between frames
+- `umAll`: Includes all columns, filling missing values with NULL
+
+### Type Conversion
+When combining DataFrames with different column types:
+- Compatible types are automatically converted (e.g., Integer to Float)
+- Incompatible conversions result in NULL values
+- String columns can accept any type through string conversion
+- Type precedence follows SQL conventions
+
+### Notes
+- All union operations create a new DataFrame that must be freed by the caller
+- NULL values are preserved and handled properly in all operations
+- Column name matching is case-sensitive
+- Type conversions are attempted when possible but may result in NULL values if incompatible
+
