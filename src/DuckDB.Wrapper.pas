@@ -41,6 +41,8 @@ type
     procedure BeginTransaction;
     procedure Commit;
     procedure Rollback;
+    
+    class function ReadCSV(const FileName: string): TDuckFrame;
   end;
 
 implementation
@@ -140,16 +142,16 @@ end;
 
 procedure TDuckDBConnection.ExecuteSQL(const ASQL: string);
 var
-  Result: duckdb_result;
+  QueryResult: duckdb_result;
   State: duckdb_state;
 begin
   RaiseIfNotConnected;
   
-  State := duckdb_query(FConnection, PAnsiChar(AnsiString(ASQL)), @Result);
+  State := duckdb_query(FConnection, PAnsiChar(AnsiString(ASQL)), @QueryResult);
   try
     CheckError(State, 'Failed to execute SQL: ' + ASQL);
   finally
-    duckdb_destroy_result(@Result);
+    duckdb_destroy_result(@QueryResult);
   end;
 end;
 
@@ -204,5 +206,27 @@ end;
 procedure TDuckDBConnection.Rollback;
 begin
   ExecuteSQL('ROLLBACK');
+end;
+
+class function TDuckDBConnection.ReadCSV(const FileName: string): TDuckFrame;
+var
+  SQLQuery: string;
+  DB: TDuckDBConnection;
+begin
+  if not FileExists(FileName) then
+    raise EDuckDBError.CreateFmt('File not found: %s', [FileName]);
+
+  DB := TDuckDBConnection.Create;
+  try
+    DB.Open;
+    
+    SQLQuery := Format('SELECT * FROM read_csv_auto(''%s'')', [
+      StringReplace(FileName, '''', '''''', [rfReplaceAll])
+    ]);
+    
+    Result := DB.Query(SQLQuery);
+  finally
+    DB.Free;
+  end;
 end;
 end. 

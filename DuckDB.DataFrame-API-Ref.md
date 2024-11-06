@@ -11,6 +11,7 @@
   - [Data Access](#data-access)
     - [Column Selection](#column-selection)
     - [Data Filtering](#data-filtering)
+  - [File Operations](#file-operations)
     - [CSV Export](#csv-export)
   - [Data Analysis Methods](#data-analysis-methods)
     - [Describe](#describe)
@@ -122,13 +123,6 @@ procedure Print;
 ```
 - Prints the DataFrame to console in a formatted table
 
-```pascal
-procedure SaveToCSV(const FileName: string);
-```
-- Saves the DataFrame to a CSV file
-- Includes header row
-- Uses standard CSV formatting
-
 ### Data Analysis Methods
 
 ```pascal
@@ -200,13 +194,6 @@ procedure Info;
 ### Statistical Analysis
 
 ```pascal
-function Corr: TDuckFrame;
-```
-- Default correlation method (currently uses Pearson)
-- Returns a new DataFrame containing the correlation coefficients
-- Caller must free the returned DataFrame
-
-```pascal
 function CorrPearson: TDuckFrame;
 ```
 - Calculates the Pearson correlation matrix for all numeric columns
@@ -265,6 +252,48 @@ Spearman Correlation:
 - Presence of outliers
 - Non-normal distributions
 - More robust general-purpose correlation
+
+## File Operations
+
+### CSV Export
+
+```pascal
+procedure SaveToCSV(const FileName: string);
+```
+Saves the DataFrame to a CSV file following RFC 4180 specifications.
+
+Features:
+- Full RFC 4180 compliance
+- Handles special cases:
+  - Multi-line text fields (preserved with proper quoting)
+  - Fields containing commas
+  - Fields containing quotes (escaped with double quotes)
+  - NULL values (written as empty fields)
+  - Empty string values
+- Uses standard CRLF line endings
+- Properly escapes and quotes field values when needed
+
+Example:
+```pascal
+var
+  DF: TDuckFrame;
+begin
+  // ... populate DataFrame ...
+  
+  // Save to CSV file
+  DF.SaveToCSV('output.csv');
+end;
+```
+
+Output format example:
+```csv
+id,name,description
+1,"Simple text","Normal field"
+2,"Text with
+multiple lines","Another field"
+3,"Text with ""quotes""","Text with, comma"
+4,,"Empty field (NULL)"
+```
 
 ## Usage Examples
 

@@ -8,7 +8,9 @@
     - [Constructor Methods](#constructor-methods)
     - [Connection Management](#connection-management)
     - [Query Execution](#query-execution)
-
+    - [Transaction Management](#transaction-management)
+    - [CSV Operations](#csv-operations)
+    - [Error Handling](#error-handling)
 
 ## TDuckDBConnection
 
@@ -96,6 +98,30 @@ procedure Rollback;
 - Rolls back the current transaction
 - Raises `EDuckDBError` if no active transaction
 
+### CSV Operations
+
+```pascal
+class function ReadCSV(const FileName: string): TDuckFrame;
+```
+- Reads a CSV file and returns it as a DataFrame
+- Uses DuckDB's automatic type inference
+- Handles headers automatically
+- Raises `EDuckDBError` if file not found or on parsing error
+- Caller must free the returned TDuckFrame
+- Example:
+  ```pascal
+  var
+    DF: TDuckFrame;
+  begin
+    DF := TDuckDBConnection.ReadCSV('data.csv');
+    try
+      DF.Print;  // Display results
+    finally
+      DF.Free;
+    end;
+  end;
+  ```
+
 ### Error Handling
 
 All methods can raise `EDuckDBError` which includes:
@@ -104,6 +130,21 @@ All methods can raise `EDuckDBError` which includes:
 - Original DuckDB error code
 
 ## Usage Examples
+
+### Reading CSV Files
+```pascal
+var
+  DF: TDuckFrame;
+begin
+  DF := TDuckDBConnection.ReadCSV('data.csv');
+  try
+    DF.Print;  // Display contents
+    DF.SaveToCSV('output.csv');  // Save to new file
+  finally
+    DF.Free;
+  end;
+end;
+```
 
 ### In-Memory Database
 ```pascal
@@ -166,10 +207,21 @@ var
 begin
   DB := TDuckDBConnection.Create;
   try
-    DB.Open();
-    DF := DB.Query('SELECT * FROM test');
+    DB.Open();  // Creates in-memory database
+    
+    // Create and populate a test table
+    DB.ExecuteSQL('CREATE TABLE test (id INTEGER, name VARCHAR)');
+    DB.ExecuteSQL('INSERT INTO test VALUES (1, ''Alice''), (2, ''Bob''), (3, ''Charlie'')');
+    
+    // Query the table into a DataFrame
+    DF := DB.Query('SELECT * FROM test ORDER BY id');
     try
-      DF.Print;  // Display results
+      DF.Print;  // Will display:
+      // id   name
+      // ---- -------
+      // 1    Alice
+      // 2    Bob
+      // 3    Charlie
     finally
       DF.Free;
     end;

@@ -34,18 +34,19 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
 
 ## Features
 
-- Simple, intuitive API
-- Automatic resource management
-- DataFrame-like structure for query results
-- Error handling
-- Support for both in-memory and file-based databases
-- Transaction support
-- Advanced DataFrame operations:
-  - Statistical analysis and summaries
-  - Missing data handling (DropNA, FillNA)
+- Native DuckDB integration
+- DataFrame operations similar to pandas/R
+- CSV file handling:
+  - Read CSV files with automatic type inference (`TDuckDBConnection.ReadCSV`)
+  - Save DataFrames to CSV with RFC 4180 compliance (`TDuckFrame.SaveToCSV`)
+- Data analysis capabilities:
+  - Basic statistics (mean, std dev, etc.)
   - Correlation analysis (Pearson and Spearman)
-  - Data visualization (histograms)
-  - Frequency analysis (unique value counts)
+  - Frequency counts
+  - Missing value handling
+- Pretty printing with customizable row limits
+- Column selection and filtering
+- Descriptive statistics
 
 ## Installation
 

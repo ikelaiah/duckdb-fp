@@ -470,33 +470,67 @@ begin
 end;
 
 procedure TDuckFrame.SaveToCSV(const FileName: string);
+const
+  CRLF = #13#10;  // RFC 4180 specifies CRLF
 var
   F: TextFile;
   Row, Col: Integer;
+  Value: string;
+
+  // Helper function to properly escape and quote CSV fields per RFC 4180
+  function EscapeCSVField(const Field: string): string;
+  var
+    NeedsQuoting: Boolean;
+  begin
+    Result := Field;
+    
+    // Check if field needs quoting
+    NeedsQuoting := (Pos('"', Result) > 0) or 
+                    (Pos(',', Result) > 0) or 
+                    (Pos(#13, Result) > 0) or 
+                    (Pos(#10, Result) > 0);
+                    
+    // Escape double quotes with double quotes (RFC 4180 rule 7)
+    Result := StringReplace(Result, '"', '""', [rfReplaceAll]);
+    
+    // Enclose in quotes if needed (RFC 4180 rule 6)
+    if NeedsQuoting then
+      Result := '"' + Result + '"';
+  end;
+
 begin
   AssignFile(F, FileName);
   try
     Rewrite(F);
     
-    // Write header
+    // Write header (RFC 4180 rule 3)
     for Col := 0 to Length(FColumns) - 1 do
     begin
       if Col > 0 then
         Write(F, ',');
-      Write(F, FColumns[Col].Name);
+      Write(F, EscapeCSVField(FColumns[Col].Name));
     end;
-    WriteLn(F);
+    Write(F, CRLF);  // Use CRLF (RFC 4180 rule 1)
     
-    // Write data
+    // Write data rows
     for Row := 0 to FRowCount - 1 do
     begin
       for Col := 0 to Length(FColumns) - 1 do
       begin
+        // Add comma between fields (RFC 4180 rule 5)
         if Col > 0 then
           Write(F, ',');
-        Write(F, VarToStr(FColumns[Col].Data[Row]));
+          
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          // Empty field for NULL (RFC 4180 rule 9)
+          Write(F, '')
+        else
+          Write(F, EscapeCSVField(VarToStr(FColumns[Col].Data[Row])));
       end;
-      WriteLn(F);
+      
+      // Add CRLF after each record except possibly the last (RFC 4180 rules 1,2)
+      if Row < FRowCount - 1 then
+        Write(F, CRLF);
     end;
   finally
     CloseFile(F);
