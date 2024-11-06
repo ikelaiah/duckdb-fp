@@ -22,7 +22,7 @@
 
 ## TDuckFrame
 
-A column-oriented data structure for handling DuckDB query results, similar to pandas DataFrame in Python.
+A column-oriented data structure for handling DuckDB query results, similar to R's data frame or pandas DataFrame in Python.
 
 ### Properties
 
