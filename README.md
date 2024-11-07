@@ -47,18 +47,18 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
 - Pretty printing with customizable row limits
 - Column selection and filtering
 - Descriptive statistics
-- DataFrame Operations
-  - Data Analysis: `Describe`, `Info`, `NullCount`, `Head`, `Tail`
+- DataFrame Operations:
+  - Data Analysis: `Describe`, `Info`, `Head`, `Tail`
   - Statistical Analysis: `CorrPearson`, `CorrSpearman`
   - Data Export: `SaveToCSV`
   - DataFrame Combinations:
     - `Union`: Combines DataFrames and removes duplicates (like SQL UNION)
     - `UnionAll`: Combines DataFrames keeping all rows (like SQL UNION ALL)
     - `Distinct`: Removes duplicate rows from DataFrame
-    - Flexible union modes for handling different column structures:
+    - Flexible union modes:
       - `umStrict`: Requires exact match of column names and types
       - `umCommon`: Only includes columns that exist in both frames
-      - `umAll`: Includes all columns from both frames, filling missing values with NULL
+      - `umAll`: Includes all columns, filling missing values with NULL
 
 ## Sample Datasets
 
