@@ -444,24 +444,9 @@ salary           1          0.750         68333.333 16072.751 50000.000 62500.00
 
 ## DataFrame Combination Methods
 
-### Union Operations
+### DataFrame Combination Operations
 
-```pascal
-function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-```
-- Combines two DataFrames and removes duplicate rows (like SQL's `UNION DISTINCT`)
-- Returns a new DataFrame (caller must free)
-- Supports different union modes for handling column mismatches
-- NULL values are handled properly in duplicate detection
-
-```pascal
-function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-```
-- Combines two DataFrames keeping all rows including duplicates (like SQL's `UNION ALL`)
-- Returns a new DataFrame (caller must free)
-- Supports different union modes for handling column mismatches
-
-### Union Modes
+#### Union Modes
 The `TUnionMode` enumeration controls how DataFrame combinations handle column matching:
 
 ```pascal
@@ -469,45 +454,37 @@ type
   TUnionMode = (
     umStrict,    // Most conservative: requires exact match of column names and types
     umCommon,    // Intersection mode: only includes columns that exist in both frames
-    umAll        // Most inclusive: includes all columns from both frames, fills missing with NULL
+    umAll        // Most inclusive: includes all columns from both frames
   );
 ```
 
-#### Mode Details:
-
-1. `umStrict` - Most conservative mode
-   - Requires exact match of column names and types
-   - Ensures data consistency
-   - Best for when you know both DataFrames should have identical structure
-   - Similar to SQL's UNION with strict type checking
-
-2. `umCommon` - Intersection mode
-   - Only includes columns that exist in both DataFrames
-   - Flexible when DataFrames have different structures but share some columns
-   - Similar to SQL's NATURAL JOIN behavior
-   - Good for when you want to safely combine DataFrames with different schemas
-
-3. `umAll` - Most inclusive mode
-   - Includes all columns from both DataFrames
-   - Missing values are filled with NULL
-   - Most flexible but might need careful handling of NULL values
-   - Similar to SQL's FULL OUTER JOIN concept
-   - Useful when you want to preserve all data from both frames
-
-Example:
+#### Union
 ```pascal
-var
-  DF1, DF2, Combined: TDuckFrame;
-begin
-  // Combine keeping only common columns
-  Combined := DF1.Union(DF2, umCommon);
-  try
-    Combined.Print;
-  finally
-    Combined.Free;
-  end;
-end;
+function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
 ```
+Combines two DataFrames and removes duplicate rows (similar to SQL's UNION).
+- Internally calls `UnionAll` followed by `Distinct`
+- Returns a new DataFrame with combined unique rows
+
+#### UnionAll
+```pascal
+function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+```
+Combines two DataFrames keeping all rows including duplicates (similar to SQL's UNION ALL).
+- Different union modes affect how columns are combined:
+  - `umStrict`: Requires exact column match (names and types)
+  - `umCommon`: Only includes columns present in both frames
+  - `umAll`: Includes all columns, fills missing values with NULL
+- Returns a new DataFrame with all rows from both frames
+
+#### Distinct
+```pascal
+function Distinct: TDuckFrame;
+```
+Removes duplicate rows from the DataFrame.
+- Uses efficient hash-based deduplication
+- Considers all columns when determining uniqueness
+- Returns a new DataFrame with unique rows only
 
 ### Examples
 
@@ -518,48 +495,47 @@ var
 begin
   DB := TDuckDBConnection.Create(':memory:');
   try
-    // Create two sample DataFrames
-    DF1 := DB.Query('SELECT 1 as id, ''A'' as name');
-    DF2 := DB.Query('SELECT 2 as id, ''B'' as name');
+    // Create DataFrames with different structures
+    DF1 := DB.Query('SELECT 1 as id, ''A'' as name, 25 as age');
+    DF2 := DB.Query('SELECT 2 as id, ''B'' as name, ''HR'' as department');
     
+    // Union with common columns only
+    Combined := DF1.Union(DF2, umCommon);
     try
-      // Combine with duplicate removal (like SQL UNION)
-      Combined := DF1.Union(DF2);
-      try
-        Combined.Print;
-      finally
-        Combined.Free;
-      end;
-      
-      // Combine keeping all rows (like SQL UNION ALL)
-      Combined := DF1.UnionAll(DF2);
-      try
-        Combined.Print;
-      finally
-        Combined.Free;
-      end;
-      
-      // Remove duplicates from a single DataFrame
-      Combined := DF1.Distinct;
-      try
-        Combined.Print;
-      finally
-        Combined.Free;
-      end;
+      Combined.Print;  // Shows only 'id' and 'name' columns
     finally
-      DF1.Free;
-      DF2.Free;
+      Combined.Free;
+    end;
+    
+    // UnionAll with all columns
+    Combined := DF1.UnionAll(DF2, umAll);
+    try
+      Combined.Print;  // Shows all columns with NULL for missing values
+    finally
+      Combined.Free;
+    end;
+    
+    // Remove duplicates from a single DataFrame
+    Combined := DF1.Distinct;
+    try
+      Combined.Print;
+    finally
+      Combined.Free;
     end;
   finally
+    DF1.Free;
+    DF2.Free;
     DB.Free;
   end;
 end;
 ```
 
-Union modes allow flexible handling of different DataFrame structures:
-- `umStrict`: Most conservative, requires exact column match
-- `umCommon`: Only includes shared columns between frames
-- `umAll`: Includes all columns, filling missing values with NULL
+### Implementation Details
+
+The combination operations use `THashSet` for efficient unique value tracking:
+- Column name uniqueness in `umAll` mode
+- Row uniqueness in `Distinct` operation
+- Hash-based lookups provide O(1) average case complexity
 
 ### Type Conversion
 When combining DataFrames with different column types:

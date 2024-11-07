@@ -1543,14 +1543,42 @@ end;
 function TDuckFrame.GetAllColumns(const Other: TDuckFrame): TStringArray;
 var
   AllColumns: TStringArray;
+  UniqueColumns: specialize THashSet<string>;
   I: Integer;
+  CurrentIndex: Integer;
 begin
-  SetLength(AllColumns, Length(FColumns) + Length(Other.FColumns));
-  for I := 0 to High(FColumns) do
-    AllColumns[I] := FColumns[I].Name;
-  for I := 0 to High(Other.FColumns) do
-    AllColumns[Length(FColumns) + I] := Other.FColumns[I].Name;
-  Result := AllColumns;
+  UniqueColumns := specialize THashSet<string>.Create;
+  try
+    // First, collect all unique column names
+    for I := 0 to High(FColumns) do
+      UniqueColumns.Add(FColumns[I].Name);
+        
+    for I := 0 to High(Other.FColumns) do
+      UniqueColumns.Add(Other.FColumns[I].Name);
+    
+    // Create result array
+    SetLength(AllColumns, UniqueColumns.Count);
+    CurrentIndex := 0;
+    
+    // Add columns from first DataFrame
+    for I := 0 to High(FColumns) do
+    begin
+      AllColumns[CurrentIndex] := FColumns[I].Name;
+      Inc(CurrentIndex);
+    end;
+    
+    // Add unique columns from second DataFrame
+    for I := 0 to High(Other.FColumns) do
+      if FindColumnIndex(Other.FColumns[I].Name) < 0 then
+      begin
+        AllColumns[CurrentIndex] := Other.FColumns[I].Name;
+        Inc(CurrentIndex);
+      end;
+      
+    Result := AllColumns;
+  finally
+    UniqueColumns.Free;
+  end;
 end;
 
 function TDuckFrame.Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
@@ -1671,11 +1699,11 @@ end;
 function TDuckFrame.Distinct: TDuckFrame;
 var
   Row, Col, ResultRow: Integer;
-  UniqueRows: specialize TDictionary<string, Boolean>;
+  UniqueRows: specialize THashSet<string>;
   RowKey: string;
 begin
   Result := TDuckFrame.Create;
-  UniqueRows := specialize TDictionary<string, Boolean>.Create;
+  UniqueRows := specialize THashSet<string>.Create;
   try
     // First pass: count unique rows
     Result.FRowCount := 0;
@@ -1686,11 +1714,8 @@ begin
       for Col := 0 to High(FColumns) do
         RowKey := RowKey + VarToStr(FColumns[Col].Data[Row]);
       
-      if not UniqueRows.ContainsKey(RowKey) then
-      begin
-        UniqueRows.Add(RowKey, True);
+      if UniqueRows.Add(RowKey) then  // Add returns true if the item was added (was unique)
         Inc(Result.FRowCount);
-      end;
     end;
     
     // Setup result structure
@@ -1713,9 +1738,8 @@ begin
       for Col := 0 to High(FColumns) do
         RowKey := RowKey + VarToStr(FColumns[Col].Data[Row]);
       
-      if not UniqueRows.ContainsKey(RowKey) then
+      if UniqueRows.Add(RowKey) then  // Add returns true if the item was added (was unique)
       begin
-        UniqueRows.Add(RowKey, True);
         // Copy row data
         for Col := 0 to High(FColumns) do
           Result.FColumns[Col].Data[ResultRow] := FColumns[Col].Data[Row];
