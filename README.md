@@ -48,8 +48,14 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
 - Column selection and filtering
 - Descriptive statistics
 - DataFrame Operations:
-  - Data Analysis: `Describe`, `Info`, `Head`, `Tail`
-  - Statistical Analysis: `CorrPearson`, `CorrSpearman`
+  - Data Analysis: 
+    - `Describe`: Comprehensive statistical summary
+    - `Info`: DataFrame structure information
+    - `NullCount`: Count of null values per column
+    - `Head`, `Tail`: View first/last N rows
+  - Statistical Analysis: 
+    - `CorrPearson`: Pearson correlation matrix
+    - `CorrSpearman`: Spearman correlation matrix
   - Data Export: `SaveToCSV`
   - DataFrame Combinations:
     - `Union`: Combines DataFrames and removes duplicates (like SQL UNION)
