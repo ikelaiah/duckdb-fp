@@ -10,7 +10,6 @@ uses
 type
   EDuckDBError = class(Exception);
 
-
   {
   Union modes
 
@@ -53,7 +52,7 @@ type
     dctBlob        // Binary large object
   );
 
-  { Column information including metadata and data }
+  { Column information including metadata and data matching DuckDB's data type}
   TDuckDBColumn = record
     Name: string;           // Column name from query
     DataType: TDuckDBColumnType;  // Column's data type
@@ -81,13 +80,13 @@ type
 
   TStringArray = array of string;  // Add this type declaration at the unit level
 
-  { DataFrame class for handling query results in a columnar format }
+  { DataFrame class for handling query results in DuckDB compatible datatype}
   TDuckFrame = class
   private
     FColumns: array of TDuckDBColumn;  // Array of columns
     FRowCount: Integer;                // Number of rows in the DataFrame
     
-    // Helper functions for data access and calculations
+    { Core: Helper functions for data access and calculations }
     function GetColumnCount: Integer;
     function GetColumn(Index: Integer): TDuckDBColumn;
     function GetColumnByName(const Name: string): TDuckDBColumn;
@@ -95,32 +94,39 @@ type
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
     
-    // Type mapping and statistical calculations
+    { Stats: Type mapping and statistical calculations }
     function MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
     function IsNumericColumn(const Col: TDuckDBColumn): Boolean;
     function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
-    function CalculatePercentile(const Values: array of Double; 
-      Percentile: Double): Double;
-    
-    // Move these functions to private section
+    function CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
+
+    { Core: Helper functions for union operations }
     function GetCommonColumns(const Other: TDuckFrame): TStringArray;
     function GetAllColumns(const Other: TDuckFrame): TStringArray;
     function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
-    
     function HasSameStructure(const Other: TDuckFrame): Boolean;
     function GetColumnNames: TStringArray;
     
   public
+
+    { Constructor and destructor }
     constructor Create;
     destructor Destroy; override;
     
-    { Core DataFrame operations }
+    { Core: DataFrame operations }
     procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
     procedure Clear;                                    // Clear all data
     procedure Print(MaxRows: Integer = 10);            // Print DataFrame contents
-    procedure SaveToCSV(const FileName: string);       // Export to CSV file
     
-    { Data analysis methods }
+    { Core: Union operations }
+    function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+    function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+    function Distinct: TDuckFrame;
+
+  { IO: Save to file operations }
+    procedure SaveToCSV(const FileName: string);       // Export to CSV file
+
+    { Stats: Data analysis methods }
     function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
     function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
     function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
@@ -128,17 +134,17 @@ type
     function NullCount: TDuckFrame;                   // Count null values per column
     procedure Info;                                    // Show DataFrame structure info
     
-    { Advanced analysis methods }
+    { Stat: Missing data handling }
+    function DropNA: TDuckFrame;                  // Remove rows with any null values
+    function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
+    
+    { Stats: Advanced analysis methods }
     function CorrPearson: TDuckFrame;
     function CorrSpearman: TDuckFrame;
     function UniqueCounts(const ColumnName: string): TDuckFrame; // Frequency of each unique value
     
-    { Plotting capabilities }
+    { Plot: ASCII plotting capabilities }
     procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
-    
-    { Missing data handling }
-    function DropNA: TDuckFrame;                  // Remove rows with any null values
-    function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
     
     { Properties }
     property RowCount: Integer read FRowCount;
@@ -148,17 +154,12 @@ type
     property Values[Row, Col: Integer]: Variant read GetValue;
     property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
 
-    function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-    function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-    function Distinct: TDuckFrame;
+
   end;
 
 { Helper function for sorting }
 procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
-
-// Add this helper function at the unit level (outside the class)
 procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer);
-
 
 implementation
 
