@@ -66,48 +66,12 @@ This wrapper provides a simple interface to work with DuckDB in FreePascal appli
       - `umCommon`: Only includes columns that exist in both frames
       - `umAll`: Includes all columns, filling missing values with NULL
 
-## Sample Datasets
-
-The wrapper includes a `TDuckDBSampleData` class that provides easy access to common datasets for testing and learning:
-
-```pascal
-uses
-  DuckDB.Wrapper, DuckDB.DataFrame, DuckDB.SampleData;
-
-var
-  DF: TDuckFrame;
-begin
-  // Load the MTCars dataset
-  DF := TDuckDBSampleData.LoadData(sdMtcars);
-  try
-    WriteLn('Dataset Info:');
-    DF.Info;
-    
-    WriteLn('First 5 rows:');
-    DF.Head(5).Print;
-    
-    WriteLn('Summary Statistics:');
-    DF.Describe;
-  finally
-    DF.Free;
-  end;
-end;
-```
-
-Available datasets:
-- MTCars (Motor Trend Car Road Tests)
-- Iris (Fisher's Iris Flower Dataset)
-- Titanic (Passenger Survival Data)
-- Diamonds (Diamond Prices and Characteristics)
-- Gapminder (World Development Indicators)
-- MPG (Fuel Economy Data)
-- NYC Flights (2013 Flight Data)
-
 ## Installation
 
 1. Add the following files to your project:
    - `src/DuckDB.Wrapper.pas`
    - `src/DuckDB.DataFrame.pas`
+   - `src/DuckDB.SampleData.pas` (optional, for sample datasets)
    - `src/libduckdb.pas`
 
 2. Make sure the DuckDB library (DLL/SO) is in your application's path
@@ -121,7 +85,7 @@ Available datasets:
 
 ## Quick Reference
 
-### Open, Close, Query
+### Open, Query and Close Connection
 
 ```pascal
 uses
@@ -162,7 +126,7 @@ begin
     end;
 
   finally
-    DB.Free;  // Automatically closes connection
+    DB.Free;
   end;
 end;
 ```
@@ -175,7 +139,7 @@ uses
 
 var
   DB: TDuckDBConnection;
-  DF: TDuckFrame;
+  NullCounts, DF: TDuckFrame;
 begin
   // Create and open in-memory database
   DB := TDuckDBConnection.Create;
@@ -189,7 +153,7 @@ begin
       DF.Describe;
       
       // Check for missing data
-      var NullCounts := DF.NullCount;
+      NullCounts := DF.NullCount;
       try
         NullCounts.Print;
       finally
@@ -236,22 +200,6 @@ begin
 end;
 ```
 
-## DataFrame Features
-
-The `TDuckFrame` class provides:
-- Column-oriented data storage
-- Easy access to data by column name or index
-- Pretty printing of results
-- Head/Tail operations
-- CSV export capabilities
-- Comprehensive statistical analysis:
-  - Separate analysis for factor (categorical) and numeric columns
-  - Basic statistics (mean, standard deviation)
-  - Distribution analysis (quartiles, skewness, kurtosis)
-  - Data quality metrics (null counts, non-missing rates)
-  - Top value counts for categorical data
-  - Memory usage reporting
-
 ## Error Handling
 
 The wrapper uses exceptions for error handling:
@@ -273,80 +221,177 @@ end;
 
 The `examples/` folder contains sample applications demonstrating how to use the wrapper:
 
-### DemoWrapper01
-Located in `examples/DemoWrapper01/DemoWrapper01.lpr`, this example shows:
-- Creating an in-memory DuckDB database
-- Creating tables and inserting data
-- Querying data into a DataFrame
-- Displaying data with DataFrame.Print
-- Exporting data to CSV
-- Using Head() to get first N rows
-- Accessing data by column name
+### [DuckFrameFromBlank](examples/DuckFrameFromBlank/DuckFrameFromBlank.lpr)
 
-To run the example:
+This example demonstrates how to create a DataFrame from scratch. 
+
+Snippet:
 
 ```pascal
-cd examples/DemoWrapper01
-lazbuild DemoWrapper01.lpr
-./DemoWrapper01
+  ...
+  DuckFrame := TDuckFrame.CreateBlank(['Name', 'Age', 'City'],
+                                      [dctString, dctInteger, dctString]);
+  try
+    // Adding two rows to this dataframe
+    DuckFrame.AddRow(['John', 25, 'New York']);
+    ...
+
+    // Print data frame
+    DuckFrame.Print;
+
+  finally
+    DuckFrame.Free;
+  end;
+  ...
 ```
 
-The example will:
-1. Create a sample table
-2. Insert test data
-3. Display the data in various ways
-4. Save the data to 'test_output.csv'
-5. Show how to access specific columns
+### [DuckFrameFromDuckDB](examples/DuckFrameFromDuckDB/DuckFrameFromDuckDB.lpr)
 
-More examples will be added to demonstrate other features like:
-- File-based databases
-- Transactions
-- Data filtering
-- Complex queries
+This example demonstrates how to create a DataFrame from a DuckDB file.
 
-### Demo01
-Located in `examples/Demo01/Demo01.lpr`, this example shows:
-
-- Printing the DuckDB version
-- Opening an in-memory database
-- Creating a connection to the database
-- Executing a simple query
-- Displaying the results
-  - Printing the number of columns and rows
-  - Printing column names
-  - Printing data rows
-
-
-... without using the wrapper and dataframe classes.
-
-To run the example:
+Snippet:  
 
 ```pascal
-cd examples/Demo01
-lazbuild Demo01.lpr
-./Demo01
+    
+    ...
+    DataDir := 'data';
+    // Read table `customer` from a DuckDB file
+    Frame := TDuckFrame.CreateFromDuckDB(DataDir + DirectorySeparator + 'customers.db', 'customers');
+    try
+      ...
+      Frame.Print;  // Add this to see the actual data
+      ...
+
+      // Basic statistics for numeric columns
+      ...
+      if Frame.FindColumnIndex('age') >= 0 then
+      begin
+        ...
+        Frame.PlotHistogram('age', 5);  // Show age distribution in 5 bins
+      end;
+      
+      ...
+
+      // Show unique counts for a categorical column
+      ...
+      if Frame.FindColumnIndex('country') >= 0 then
+      begin
+        Frame.UniqueCounts('country').Print;
+      end;
+
+    ...
+
+    finally
+      Frame.Free;
+    end;
+  ...
 ```
 
-### Demo02
-Located in `examples/Demo02/Demo02.lpr`, this example shows:
-- Printing the DuckDB version
-- Opening a file-based database
-- Creating a connection to the database
-- Executing a simple query
-- Displaying the results
-  - Printing the number of columns and rows
-  - Printing column names
-  - Printing data rows
+### [DuckFrameBasicAnalysis](examples/DuckFrameBasicAnalysis/DuckFrameBasicAnalysis.lpr)
 
-... without using the wrapper and dataframe classes.
+This example demonstrates basic DataFrame operations, including statistical summary, null count, and basic info of dataframe.
 
-To run the example:
+Snippet:
 
 ```pascal
-cd examples/Demo02
-lazbuild Demo02.lpr
-./Demo02
+  ...
+  DF := DB.Query('SELECT * FROM employees');
+  try
+    ...
+    DF.Describe; // Show statistical summary
+    ...
+
+    // Get Null counts as a DF
+    NullCounts := DF.NullCount;
+    try
+      NullCounts.Print;
+    finally
+      NullCounts.Free;
+    end;
+    ...
+
+    DF.Info; // Show DataFrame structure and memory usage
+    ...
+  finally
+    DF.Free;
+  end;
+  ...
+``` 
+
+Sample output:
+
 ```
+Statistical Summary:
+-------------------
+Number of rows: 5
+Number of columns: 4
+
+Column type frequency:
+  factor    1
+  numeric   3
+
+-- Variable type: factor
+skim_variable    n_missing  complete_rate ordered   n_unique
+name             0          1.000         FALSE     5
+    Top counts: Bob: 1, Alice: 1, John: 1
+
+-- Variable type: numeric
+skim_variable    n_missing  complete_rate mean      sd        min       q1        median    q3        max       skew      kurt
+id               0          1.000         3.000     1.581     1.000     2.000     3.000     4.000     5.000     0.000     13.760
+age              1          0.800         33.750    8.539     25.000    28.750    32.500    37.500    45.000    0.847     17.646
+salary           1          0.800         66250.000 13768.926 50000.000 57500.000 67500.000 76250.000 80000.000 -0.364    10.051
+
+Null Value Counts:
+----------------
+id  name  age  salary
+-- ---- --- ------
+0   0     1    1
+
+DataFrame Info:
+--------------
+DataFrame: 5 rows × 4 columns
+
+Columns:
+  id: dctInteger (nulls: 0)
+  name: dctString (nulls: 0)
+  age: dctInteger (nulls: 1)
+  salary: dctDouble (nulls: 1)
+
+Memory usage: 480 bytes (0.00 MB)
+```
+
+### [UnionDataFrames](examples/UnionDataFrames/UnionDataFrames.lpr)
+
+This example demonstrates how to combine DataFrames using different union modes.  
+
+Snippet:
+
+```pascal
+  ...
+DB := TDuckDBConnection.Create(':memory:');
+  try
+    // Create DataFrames with different structures
+    DF1 := DB.Query('SELECT 1 as id, ''A'' as name, 25 as age');
+    DF2 := DB.Query('SELECT 2 as id, ''B'' as name, ''HR'' as department');
+    
+    try
+      ...      
+      // UnionAll with umCommon (only shared columns)
+      Combined := DF1.UnionAll(DF2, umCommon);
+      try
+        Combined.Print;
+        ...
+      finally
+        Combined.Free;
+      end;
+      ...
+    finally
+      DF1.Free;
+      DF2.Free;
+    end;
+...
+``` 
+
 
 
 ## API Reference
@@ -369,4 +414,3 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - [Free Pascal Dev Team](https://www.freepascal.org/) for the Pascal compiler.
 - [Lazarus IDE Team](https://www.lazarus-ide.org/) for such an amazing IDE.
 - [rednose🇳🇱🇪🇺](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368) of the Unofficial ree Pascal Discord for providing the initial DuckDB Pascal bindings  via [Chet](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368).
-
