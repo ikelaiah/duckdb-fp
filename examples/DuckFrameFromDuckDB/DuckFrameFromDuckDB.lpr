@@ -102,6 +102,7 @@ begin
       // Print the data
       WriteLn('Data:');
       Frame.Print;  // Add this to see the actual data
+      WriteLn;
 
       // Basic statistics for numeric columns
       WriteLn('=== Basic Statistics for Age ===');
@@ -110,6 +111,7 @@ begin
         WriteLn('Histogram of Age Distribution:');
         Frame.PlotHistogram('age', 5);  // Show age distribution in 5 bins
       end;
+      WriteLn;
 
       // Show unique counts for a categorical column
       WriteLn;
@@ -118,6 +120,7 @@ begin
       begin
         Frame.UniqueCounts('country').Print;
       end;
+      WriteLn;
 
       // Demonstrate handling missing data
       WriteLn;

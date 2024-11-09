@@ -118,6 +118,7 @@ type
     function GetValue(Row, Col: Integer): Variant;
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
+    function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
 
     { Core: DataFrame operations }
     procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
@@ -132,15 +133,16 @@ type
     { IO: File-related operations }
     procedure SaveToCSV(const FileName: string);       // Export to CSV file
 
-    { Stats: Data analysis methods }
+    { Data Preview: Methods for inspecting data samples }
     function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
     function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
-    function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
+    
+    { Data Analysis: Methods for examining data structure and statistics }
     procedure Describe;                                // Show statistical summary
     function NullCount: TDuckFrame;                   // Count null values per column
-    procedure Info;                                    // Show DataFrame structure info
+    procedure Info; 
     
-    { Stat: Missing data handling }
+    { Data Cleaning: Methods for handling missing data }
     function DropNA: TDuckFrame;                  // Remove rows with any null values
     function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
     
