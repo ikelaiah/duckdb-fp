@@ -499,53 +499,6 @@ multiple lines","Another field"
 
 ## Usage Examples
 
-### Basic Data Access
-```pascal
-var
-  DF: TDuckFrame;
-begin
-  DF := DB.Query('SELECT * FROM test');
-  try
-    // Access by index
-    WriteLn(DF.Values[0, 0]);
-    
-    // Access by column name
-    WriteLn(DF.ValuesByName[0, 'id']);
-    
-    // Get column info
-    WriteLn('Column count: ', DF.ColumnCount);
-    WriteLn('First column name: ', DF.Columns[0].Name);
-  finally
-    DF.Free;
-  end;
-end;
-```
-
-### Data Filtering
-
-Use SQL WHERE clauses for data filtering.
-
-```pascal
-var
-  DB: TDuckDBConnection;
-  DF: TDuckFrame;
-begin
-  DB := TDuckDBConnection.Create;
-  try
-    DB.Open();
-    // Filter directly in SQL
-    DF := DB.Query('SELECT * FROM test WHERE id > 10');
-    try
-      DF.Print;
-    finally
-      DF.Free;
-    end;
-  finally
-    DB.Free;
-  end;
-end;
-```
-
 ### Column Selection
 ```pascal
 var
@@ -560,20 +513,6 @@ begin
     finally
       SelectedDF.Free;
     end;
-  finally
-    DF.Free;
-  end;
-end;
-```
-
-### CSV Export
-```pascal
-var
-  DF: TDuckFrame;
-begin
-  DF := DB.Query('SELECT * FROM test');
-  try
-    DF.SaveToCSV('output.csv');
   finally
     DF.Free;
   end;
