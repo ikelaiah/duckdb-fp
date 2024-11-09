@@ -17,7 +17,6 @@
     - [Statistical Analysis](#statistical-analysis)
   - [File Operations](#file-operations)
     - [CSV Export](#csv-export)
-    - [Data Analysis Example](#data-analysis-example)
   - [DataFrame Combination Methods](#dataframe-combination-methods)
     - [DataFrame Combination Operations](#dataframe-combination-operations)
       - [Union Modes](#union-modes)
@@ -523,65 +522,6 @@ id,name,description
 multiple lines","Another field"
 3,"Text with ""quotes""","Text with, comma"
 4,,"Empty field (NULL)"
-```
-
-
-### Data Analysis Example
-```pascal
-var
-  DF: TDuckFrame;
-begin
-  DF := DB.Query('SELECT * FROM employees');
-  try
-    // Display statistical summary
-    WriteLn('Statistical Summary:');
-    WriteLn('-------------------');
-    DF.Describe;
-    WriteLn;
-    
-    // Show null value counts
-    WriteLn('Null Value Counts:');
-    WriteLn('----------------');
-    var NullCounts := DF.NullCount;
-    try
-      NullCounts.Print;
-    finally
-      NullCounts.Free;
-    end;
-    WriteLn;
-    
-    // Display DataFrame information
-    WriteLn('DataFrame Info:');
-    WriteLn('--------------');
-    DF.Info;
-  finally
-    DF.Free;
-  end;
-end;
-```
-
-Example output:
-
-```
-Statistical Summary:
--------------------
-Number of rows: 4
-Number of columns: 4
-
-Column type frequency:
-  factor    1
-  numeric   3
-
--- Variable type: factor
-skim_variable    n_missing  complete_rate ordered   n_unique
-name             0          1.000         FALSE     4
-    Top counts: Bob: 1, Alice: 1, John: 1
-
--- Variable type: numeric
-skim_variable    n_missing  complete_rate mean      sd        min       q1        median    q3        max       skew      kurt
-id               0          1.000         2.500     1.291     1.000     1.750     2.500     3.250     4.000     0.000     -2.080
-age              1          0.750         33.333    10.408    25.000    27.500    30.000    37.500    45.000     0.996     0.000
-salary           1          0.750         68333.333 16072.751 50000.000 62500.000 75000.000 77500.000 80000.000 -1.190     0.000
 ```
 
 ## DataFrame Combination Methods
