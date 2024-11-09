@@ -171,6 +171,7 @@ constructor CreateBlank(const AColumnNames: array of string;
   - Duplicate column names exist
 
 Example usage:
+
 ```pascal
 // Create from DuckDB table
 var
@@ -282,7 +283,7 @@ begin
     DF.Free;
   end;
 end;
-
+```
 
 ```pascal
 procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
@@ -350,6 +351,7 @@ procedure Describe;
   - kurt: Kurtosis (measure of distribution "tailedness")
 
 Example output:
+
 ```
 Statistical Summary:
 -------------------
