@@ -162,17 +162,17 @@ type
 
     { Constructors }
     constructor CreateBlank(const AColumnNames: array of string;
-                          const AColumnTypes: array of TDuckDBColumnType); overload;
+                           const AColumnTypes: array of TDuckDBColumnType); overload;
     constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;
     constructor CreateFromCSV(const AFileName: string; 
-                            const AHasHeaders: Boolean = True;
-                            const ADelimiter: Char = ','); overload;
+                              const AHasHeaders: Boolean = True;
+                              const ADelimiter: Char = ','); overload;
                             
     { Methods for manual construction }
     procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
     procedure AddRow(const AValues: array of Variant);
     procedure SetValue(const ARow: Integer; const AColumnName: string; 
-                      const AValue: Variant);
+                       const AValue: Variant);
 
   end;
 

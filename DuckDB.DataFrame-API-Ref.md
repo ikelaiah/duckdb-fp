@@ -3,28 +3,33 @@
 ## Table of Contents
 
 - [DuckDB.DataFrame API Reference](#duckdbdataframe-api-reference)
+  - [Table of Contents](#table-of-contents)
   - [TDuckFrame](#tduckframe)
     - [Properties](#properties)
     - [Column Information (TDuckDBColumn)](#column-information-tduckdbcolumn)
     - [Data Types](#data-types)
     - [Constructor Methods](#constructor-methods)
-  - [Data Access](#data-access)
-    - [Column Selection](#column-selection)
-    - [Data Filtering](#data-filtering)
+    - [Data Access Methods](#data-access-methods)
+    - [Data Manipulation Methods](#data-manipulation-methods)
+    - [Output Methods](#output-methods)
+    - [Data Analysis Methods](#data-analysis-methods)
+    - [Histogram Generation](#histogram-generation)
+    - [Statistical Analysis](#statistical-analysis)
   - [File Operations](#file-operations)
     - [CSV Export](#csv-export)
-  - [Data Analysis Methods](#data-analysis-methods)
-    - [Describe](#describe)
-    - [NullCount](#nullcount)
-    - [Info](#info)
-    - [Statistical Analysis](#statistical-analysis)
-  - [Correlation Analysis](#correlation-analysis)
+    - [Data Analysis Example](#data-analysis-example)
   - [DataFrame Combination Methods](#dataframe-combination-methods)
-    - [Union Operations](#union-operations)
-    - [Union Modes](#union-modes)
+    - [DataFrame Combination Operations](#dataframe-combination-operations)
+      - [Union Modes](#union-modes)
+      - [Union](#union)
+      - [UnionAll](#unionall)
+      - [Distinct](#distinct)
     - [Examples](#examples)
+    - [Implementation Details](#implementation-details)
     - [Type Conversion](#type-conversion)
     - [Notes](#notes)
+    - [Missing Data Handling](#missing-data-handling)
+    - [Unique Value Analysis](#unique-value-analysis)
 
 ## TDuckFrame
 
@@ -257,6 +262,27 @@ function Select(const Columns: array of string): TDuckFrame;
 ```
 - Returns a new DataFrame with only the specified columns
 - Caller must free the returned DataFrame
+
+**Example**
+
+```pascal
+var
+  DF, SelectedDF: TDuckFrame;
+begin
+  DF := DB.Query('SELECT * FROM test');
+  try
+    // Select specific columns
+    SelectedDF := DF.Select(['id', 'name']);
+    try
+      SelectedDF.Print;
+    finally
+      SelectedDF.Free;
+    end;
+  finally
+    DF.Free;
+  end;
+end;
+
 
 ```pascal
 procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
@@ -497,27 +523,6 @@ multiple lines","Another field"
 4,,"Empty field (NULL)"
 ```
 
-## Usage Examples
-
-### Column Selection
-```pascal
-var
-  DF, SelectedDF: TDuckFrame;
-begin
-  DF := DB.Query('SELECT * FROM test');
-  try
-    // Select specific columns
-    SelectedDF := DF.Select(['id', 'name']);
-    try
-      SelectedDF.Print;
-    finally
-      SelectedDF.Free;
-    end;
-  finally
-    DF.Free;
-  end;
-end;
-```
 
 ### Data Analysis Example
 ```pascal
