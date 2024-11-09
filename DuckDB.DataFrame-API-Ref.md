@@ -28,18 +28,59 @@
 
 ## TDuckFrame
 
-A column-oriented data structure for handling DuckDB query results, similar to R's data frame or pandas DataFrame in Python.
+A data structure for handling DuckDB query results, similar to R's data frame or pandas DataFrame in Python.
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `ColumnCount` | `Integer` | Number of columns in the DataFrame |
-| `RowCount` | `Integer` | Number of rows in the DataFrame |
-| `Columns[Index: Integer]` | `TDuckDBColumn` | Access column by index |
-| `ColumnsByName[Name: string]` | `TDuckDBColumn` | Access column by name |
-| `Values[Row, Col: Integer]` | `Variant` | Access value by row and column index |
-| `ValuesByName[Row: Integer; ColName: string]` | `Variant` | Access value by row and column name |
+```pascal
+property RowCount: Integer;
+```
+- Number of rows in the DataFrame
+- Read-only
+- Returns the current number of rows
+
+```pascal
+property ColumnCount: Integer;
+```
+- Number of columns in the DataFrame
+- Read-only
+- Returns the current number of columns
+
+```pascal
+property Columns[Index: Integer]: TDuckDBColumn;
+```
+- Access column by index
+- Read-only
+- Raises `EDuckDBError` if index out of bounds
+- Returns column information including name, type, and data
+
+```pascal
+property ColumnsByName[Name: string]: TDuckDBColumn;
+```
+- Access column by name
+- Read-only
+- Raises `EDuckDBError` if column name not found
+- Returns column information including name, type, and data
+
+```pascal
+property Values[Row, Col: Integer]: Variant;
+```
+- Access value by row and column index
+- Read/write
+- Raises `EDuckDBError` if:
+  - Row index out of bounds
+  - Column index out of bounds
+- Automatic type conversion attempted when setting values
+
+```pascal
+property ValuesByName[Row: Integer; ColName: string]: Variant;
+```
+- Access value by row and column name
+- Read/write
+- Raises `EDuckDBError` if:
+  - Row index out of bounds
+  - Column name not found
+- Automatic type conversion attempted when setting values
 
 ### Column Information (TDuckDBColumn)
 
@@ -74,6 +115,101 @@ TDuckDBColumnType = (
 constructor Create;
 ```
 - Creates an empty DataFrame
+- No initial columns or rows
+- Basic initialization of internal structures
+
+```pascal
+constructor CreateFromDuckDB(const AFileName: string; const ATableName: string);
+```
+- Creates a DataFrame from a DuckDB database table
+- Parameters:
+  - `AFileName`: Path to the DuckDB database file
+  - `ATableName`: Name of the table to load
+- Raises `EDuckDBError` if:
+  - Database file not found
+  - Table doesn't exist
+  - Connection fails
+  - Query execution fails
+
+```pascal
+constructor CreateFromCSV(const AFileName: string; 
+                         AHasHeaders: Boolean = True;
+                         const ADelimiter: Char = ',');
+```
+- Creates a DataFrame by loading data from a CSV file
+- Parameters:
+  - `AFileName`: Path to the CSV file
+  - `AHasHeaders`: Whether the first row contains column names (default: True)
+  - `ADelimiter`: Character used to separate fields (default: comma)
+- Features:
+  - Automatic type detection
+  - Handles quoted strings
+  - Supports custom delimiters
+- Raises `EDuckDBError` if:
+  - File not found
+  - Invalid file format
+  - Database or connection errors
+
+```pascal
+constructor CreateBlank(const AColumnNames: array of string;
+                       const AColumnTypes: array of TDuckDBColumnType);
+```
+- Creates an empty DataFrame with predefined structure
+- Parameters:
+  - `AColumnNames`: Array of column names
+  - `AColumnTypes`: Array of column data types
+- Features:
+  - Initializes DataFrame with specified columns but no rows
+  - Ready for data addition via AddRow
+- Raises `EDuckDBError` if:
+  - Column names array and types array have different lengths
+  - Duplicate column names exist
+
+Example usage:
+```pascal
+// Create from DuckDB table
+var
+  DF1: TDuckFrame;
+begin
+  DF1 := TDuckFrame.CreateFromDuckDB('customers.db', 'sales');
+  try
+    // Use DF1...
+  finally
+    DF1.Free;
+  end;
+end;
+
+// Create from CSV file
+var
+  DF2: TDuckFrame;
+begin
+  DF2 := TDuckFrame.CreateFromCSV('data.csv', True, ',');
+  try
+    // Use DF2...
+  finally
+    DF2.Free;
+  end;
+end;
+
+// Create blank DataFrame with structure
+var
+  DF3: TDuckFrame;
+begin
+  DF3 := TDuckFrame.CreateBlank(
+    ['id', 'name', 'age'],
+    [dctInteger, dctString, dctInteger]
+  );
+  try
+    // Add rows to DF3...
+    DF3.AddRow([1, 'John', 25]);
+    DF3.AddRow([2, 'Jane', 30]);
+  finally
+    DF3.Free;
+  end;
+end;
+```
+
+Note: All constructors create a new instance that must be freed when no longer needed.
 
 ### Data Access Methods
 
@@ -121,6 +257,35 @@ function Select(const Columns: array of string): TDuckFrame;
 ```
 - Returns a new DataFrame with only the specified columns
 - Caller must free the returned DataFrame
+
+```pascal
+procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
+```
+- Adds a new column to the DataFrame
+- Parameters:
+  - `AName`: Name of the new column
+  - `AType`: Data type for the new column
+- New column is initialized with NULL values
+- Raises `EDuckDBError` if column name already exists
+
+```pascal
+procedure AddRow(const AValues: array of Variant);
+```
+- Adds a new row to the DataFrame
+- Parameters:
+  - `AValues`: Array of values matching column count and types
+- Automatic type conversion is attempted
+- Raises `EDuckDBError` if value count doesn't match column count
+
+```pascal
+procedure SetValue(const ARow: Integer; const AColumnName: string; const AValue: Variant);
+```
+- Sets a single value in the DataFrame
+- Parameters:
+  - `ARow`: Row index
+  - `AColumnName`: Column name
+  - `AValue`: New value
+- Raises `EDuckDBError` for invalid row/column
 
 ### Output Methods
 
@@ -196,6 +361,37 @@ procedure Info;
   - Column names and their data types
   - Number of null values per column
   - Memory usage in both bytes and MB
+
+### Histogram Generation
+
+```pascal
+procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
+```
+- Generates a text-based histogram for numeric columns
+- Parameters:
+  - `ColumnName`: Name of the numeric column to plot
+  - `Bins`: Number of bins to divide the data into (default: 10)
+- Features:
+  - Automatically calculates appropriate bin ranges
+  - Shows distribution of values with ASCII bar charts
+  - Displays bin ranges and counts
+  - Proportional bar lengths for better visualization
+- Raises `EDuckDBError` if column is not numeric
+
+Example output:
+```
+Histogram of age
+Range: 28.00 to 49.00
+Bin width: 4.20
+Total count: 5
+
+[28.00-32.20)   |##########   2
+[32.20-36.40)   |###   1
+[36.40-40.60)   |   0
+[40.60-44.80)   |###   1
+[44.80-49.00]   |###   1
+```
+
 
 ### Statistical Analysis
 
@@ -549,4 +745,30 @@ When combining DataFrames with different column types:
 - NULL values are preserved and handled properly in all operations
 - Column name matching is case-sensitive
 - Type conversions are attempted when possible but may result in NULL values if incompatible
+
+### Missing Data Handling
+
+```pascal
+function FillNA(const Value: Variant): TDuckFrame;
+```
+- Creates new DataFrame with NULL values replaced
+- Parameters:
+  - `Value`: Value to use for replacement
+- Returns new DataFrame with filled values
+
+```pascal
+function DropNA: TDuckFrame;
+```
+- Creates new DataFrame with rows containing any NULL values removed
+- Returns new DataFrame with complete cases only
+
+### Unique Value Analysis
+
+```pascal
+function UniqueCounts(const ColumnName: string): TDuckFrame;
+```
+- Creates frequency table for a column
+- Parameters:
+  - `ColumnName`: Column to analyze
+- Returns DataFrame with value counts
 
