@@ -86,33 +86,39 @@ type
     FColumns: array of TDuckDBColumn;  // Array of columns
     FRowCount: Integer;                // Number of rows in the DataFrame
     
-    { Core: Helper functions for data access and calculations }
-    function GetColumnCount: Integer;
-    function GetColumn(Index: Integer): TDuckDBColumn;
-    function GetColumnByName(const Name: string): TDuckDBColumn;
-    function GetValue(Row, Col: Integer): Variant;
-    function GetValueByName(Row: Integer; const ColName: string): Variant;
-    function FindColumnIndex(const Name: string): Integer;
-    
+
+
+    { Core: Union-related helper functions for combining dataframes }
+    function GetCommonColumns(const Other: TDuckFrame): TStringArray;
+    function GetAllColumns(const Other: TDuckFrame): TStringArray;
+    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
+    function HasSameStructure(const Other: TDuckFrame): Boolean;
+
     { Stats: Type mapping and statistical calculations }
     function MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
     function IsNumericColumn(const Col: TDuckDBColumn): Boolean;
     function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
     function CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
 
-    { Core: Helper functions for union operations }
-    function GetCommonColumns(const Other: TDuckFrame): TStringArray;
-    function GetAllColumns(const Other: TDuckFrame): TStringArray;
-    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
-    function HasSameStructure(const Other: TDuckFrame): Boolean;
-    function GetColumnNames: TStringArray;
-    
+    { Private helpers for constructors }
+    procedure InitializeBlank(const AColumnNames: array of string; 
+                            const AColumnTypes: array of TDuckDBColumnType);
+
   public
 
-    { Constructor and destructor }
+    { Default Constructor and destructor }
     constructor Create;
     destructor Destroy; override;
     
+    { Core: Column-related helper functions for data access and calculations }
+    function GetColumnCount: Integer;
+    function GetColumnNames: TStringArray;
+    function GetColumn(Index: Integer): TDuckDBColumn;
+    function GetColumnByName(const Name: string): TDuckDBColumn;
+    function GetValue(Row, Col: Integer): Variant;
+    function GetValueByName(Row: Integer; const ColName: string): Variant;
+    function FindColumnIndex(const Name: string): Integer;
+
     { Core: DataFrame operations }
     procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
     procedure Clear;                                    // Clear all data
@@ -123,7 +129,7 @@ type
     function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
     function Distinct: TDuckFrame;
 
-  { IO: Save to file operations }
+    { IO: File-related operations }
     procedure SaveToCSV(const FileName: string);       // Export to CSV file
 
     { Stats: Data analysis methods }
@@ -154,6 +160,19 @@ type
     property Values[Row, Col: Integer]: Variant read GetValue;
     property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
 
+    { Constructors }
+    constructor CreateBlank(const AColumnNames: array of string;
+                          const AColumnTypes: array of TDuckDBColumnType); overload;
+    constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;
+    constructor CreateFromCSV(const AFileName: string; 
+                            const AHasHeaders: Boolean = True;
+                            const ADelimiter: Char = ','); overload;
+                            
+    { Methods for manual construction }
+    procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
+    procedure AddRow(const AValues: array of Variant);
+    procedure SetValue(const ARow: Integer; const AColumnName: string; 
+                      const AValue: Variant);
 
   end;
 
@@ -384,6 +403,17 @@ begin
           FColumns[Col].Data[Row] := duckdb_value_float(AResult, Col, Row);
         dctDouble:
           FColumns[Col].Data[Row] := duckdb_value_double(AResult, Col, Row);
+        dctDate:
+          begin
+            StrValue := duckdb_value_varchar(AResult, Col, Row);
+            if StrValue <> nil then
+            begin
+              FColumns[Col].Data[Row] := string(AnsiString(StrValue));
+              duckdb_free(StrValue);
+            end
+            else
+              FColumns[Col].Data[Row] := Null;
+          end;
         dctString:
           begin
             StrValue := duckdb_value_varchar(AResult, Col, Row);
@@ -396,7 +426,17 @@ begin
               FColumns[Col].Data[Row] := Null;
           end;
         else
-          FColumns[Col].Data[Row] := Null;
+          begin
+            // Try to get as string for unhandled types
+            StrValue := duckdb_value_varchar(AResult, Col, Row);
+            if StrValue <> nil then
+            begin
+              FColumns[Col].Data[Row] := string(AnsiString(StrValue));
+              duckdb_free(StrValue);
+            end
+            else
+              FColumns[Col].Data[Row] := Null;
+          end;
       end;
     end;
   end;
@@ -1115,8 +1155,10 @@ end;
 // Basic plotting capabilities
 procedure TDuckFrame.PlotHistogram(const ColumnName: string; Bins: Integer = 10);
 const
-  MAX_WIDTH = 50;  // Maximum width of the histogram in characters
-  BAR_CHAR = '#';  // Character to use for the bars
+  MAX_WIDTH = 50;    // Maximum width of the histogram in characters
+  BAR_CHAR = '#';    // Character to use for the bars
+  MIN_BAR = 3;       // Minimum bar width for non-zero counts
+  MAX_BAR = 10;      // Reduced maximum bar width
 var
   Col: TDuckDBColumn;
   MinVal, MaxVal, BinWidth: Double;
@@ -1126,6 +1168,7 @@ var
   I, BinIndex: Integer;
   Scale: Double;
   BarWidth: Integer;
+  BinStart, BinEnd: Double;
   BinLabel: string;
 begin
   // Get column and validate
@@ -1158,52 +1201,60 @@ begin
     end;
   end;
 
-  if ValidCount = 0 then
-  begin
-    WriteLn('No valid data to plot histogram');
-    Exit;
-  end;
-
-  // Initialize bins
+  // Initialize bin counts
   SetLength(BinCounts, Bins);
   BinWidth := (MaxVal - MinVal) / Bins;
-  if BinWidth = 0 then BinWidth := 1;  // Handle case where all values are the same
-
+  
   // Count values in each bin
   MaxCount := 0;
   for I := 0 to ValidCount - 1 do
   begin
     BinIndex := Trunc((DataPoints[I] - MinVal) / BinWidth);
-    if BinIndex = Bins then Dec(BinIndex);  // Handle maximum value edge case
+    if BinIndex = Bins then  // Handle edge case for maximum value
+      BinIndex := Bins - 1;
     Inc(BinCounts[BinIndex]);
     if BinCounts[BinIndex] > MaxCount then
       MaxCount := BinCounts[BinIndex];
   end;
 
   // Calculate scale factor for display
-  Scale := MAX_WIDTH / MaxCount;
+  if MaxCount > 1 then
+    Scale := (MAX_BAR - MIN_BAR) / (MaxCount - 1)
+  else
+    Scale := 0;  // For uniform counts of 1, we'll use MIN_BAR
 
-  // Print histogram
+  // Print histogram header
   WriteLn;
   WriteLn('Histogram of ', ColumnName);
   WriteLn('Range: ', MinVal:0:2, ' to ', MaxVal:0:2);
   WriteLn('Bin width: ', BinWidth:0:2);
+  WriteLn('Total count: ', ValidCount);
   WriteLn;
 
   // Print each bin
   for I := 0 to Bins - 1 do
   begin
-    // Create bin label
-    BinLabel := Format('[%0:.2f-%0:.2f)', 
-      [MinVal + I * BinWidth, MinVal + (I + 1) * BinWidth]);
+    BinStart := MinVal + (I * BinWidth);
+    BinEnd := MinVal + ((I + 1) * BinWidth);
     
-    // Calculate bar width
-    BarWidth := Round(BinCounts[I] * Scale);
+    if I = Bins - 1 then
+      BinLabel := Format('[%.2f-%.2f]', [BinStart, BinEnd])
+    else
+      BinLabel := Format('[%.2f-%.2f)', [BinStart, BinEnd]);
     
-    // Print bar
+    // For counts of 1, use MIN_BAR, otherwise calculate proportionally
+    if BinCounts[I] > 0 then
+      if MaxCount = 1 then
+        BarWidth := MIN_BAR
+      else
+        BarWidth := MIN_BAR + Round((BinCounts[I] - 1) * Scale)
+    else
+      BarWidth := 0;
+    
+    // Print bar with right-aligned count
     Write(Format('%-15s |', [BinLabel]));
     Write(StringOfChar(BAR_CHAR, BarWidth));
-    WriteLn(Format(' %d', [BinCounts[I]]));
+    WriteLn(Format(' %3d', [BinCounts[I]]));
   end;
   WriteLn;
 end;
@@ -1750,6 +1801,191 @@ begin
   finally
     UniqueRows.Free;
   end;
+end;
+
+constructor TDuckFrame.CreateBlank(const AColumnNames: array of string;
+                                   const AColumnTypes: array of TDuckDBColumnType);
+begin
+  Create;  // Call default constructor
+  InitializeBlank(AColumnNames, AColumnTypes);
+end;
+
+constructor TDuckFrame.CreateFromDuckDB(const ADatabase, ATableName: string);
+var
+  DB: p_duckdb_database;
+  Conn: p_duckdb_connection;
+  Result: duckdb_result;
+  Query: string;
+begin
+  inherited Create;
+  
+  if duckdb_open(PAnsiChar(AnsiString(ADatabase)), @DB) <> DuckDBSuccess then
+    raise EDuckDBError.Create('Failed to open database');
+    
+  try
+    if duckdb_connect(DB, @Conn) <> DuckDBSuccess then
+      raise EDuckDBError.Create('Failed to create connection');
+      
+    try
+      Query := Format('SELECT * FROM %s', [ATableName]);
+      if duckdb_query(Conn, PAnsiChar(AnsiString(Query)), @Result) <> DuckDBSuccess then
+        raise EDuckDBError.CreateFmt('Failed to query table %s', [ATableName]);
+        
+      try
+        LoadFromResult(@Result);
+      finally
+        duckdb_destroy_result(@Result);
+      end;
+    finally
+      duckdb_disconnect(@Conn);
+    end;
+  finally
+    duckdb_close(@DB);
+  end;
+end;
+
+constructor TDuckFrame.CreateFromCSV(const AFileName: string;
+                                   const AHasHeaders: Boolean = True;
+                                   const ADelimiter: Char = ',');
+var
+  DB: p_duckdb_database;
+  Conn: p_duckdb_connection;
+  Result: duckdb_result;
+  State: duckdb_state;
+  SQLQuery: string;
+  Options: string;
+begin
+  inherited Create;
+  
+  if not FileExists(AFileName) then
+    raise EDuckDBError.CreateFmt('File not found: %s', [AFileName]);
+
+  // Build options string
+  Options := '';
+  if not AHasHeaders then
+    Options := Options + ', header=false';
+  if ADelimiter <> ',' then
+    Options := Options + Format(', delim=''%s''', [ADelimiter]);
+
+  try
+    // Open an in-memory database
+    State := duckdb_open(nil, @DB);
+    if State = DuckDBError then
+      raise EDuckDBError.Create('Failed to create in-memory database');
+
+    try
+      // Create a connection
+      State := duckdb_connect(DB, @Conn);
+      if State = DuckDBError then
+        raise EDuckDBError.Create('Failed to create connection');
+
+      try
+        // Create query with proper escaping
+        SQLQuery := Format('SELECT * FROM read_csv_auto(''%s''%s)',
+          [StringReplace(AFileName, '''', '''''', [rfReplaceAll]), Options]);
+
+        // Execute query
+        State := duckdb_query(Conn, PAnsiChar(AnsiString(SQLQuery)), @Result);
+        if State = DuckDBError then
+          raise EDuckDBError.Create('Failed to read CSV file');
+
+        try
+          // Load the result into our frame
+          LoadFromResult(@Result);
+        finally
+          duckdb_destroy_result(@Result);
+        end;
+
+      finally
+        duckdb_disconnect(@Conn);
+      end;
+
+    finally
+      duckdb_close(@DB);
+    end;
+
+  except
+    Clear;  // Clean up if something went wrong
+    raise;
+  end;
+end;
+
+procedure TDuckFrame.InitializeBlank(const AColumnNames: array of string;
+                                   const AColumnTypes: array of TDuckDBColumnType);
+var
+  I : Integer;
+begin
+  if Length(AColumnNames) <> Length(AColumnTypes) then
+    raise EDuckDBError.Create('Column names and types arrays must have same length');
+    
+  Clear;
+  SetLength(FColumns, Length(AColumnNames));
+  
+  for I := 0 to High(AColumnNames) do
+  begin
+    FColumns[I].Name := AColumnNames[I];
+    FColumns[I].DataType := AColumnTypes[I];
+    SetLength(FColumns[I].Data, 0);
+  end;
+  
+  FRowCount := 0;
+end;
+
+procedure TDuckFrame.AddColumn(const AName: string; AType: TDuckDBColumnType);
+var
+  I, NewCol: Integer;
+begin
+  // Check if column name already exists
+  if FindColumnIndex(AName) >= 0 then
+    raise EDuckDBError.CreateFmt('Column %s already exists', [AName]);
+    
+  NewCol := Length(FColumns);
+  SetLength(FColumns, NewCol + 1);
+  
+  FColumns[NewCol].Name := AName;
+  FColumns[NewCol].DataType := AType;
+  SetLength(FColumns[NewCol].Data, FRowCount);
+  
+  // Initialize new column with null values
+  for I := 0 to FRowCount - 1 do
+    FColumns[NewCol].Data[I] := Null;
+end;
+
+procedure TDuckFrame.AddRow(const AValues: array of Variant);
+var
+  I, NewRow: Integer;
+begin
+  if Length(AValues) <> Length(FColumns) then
+    raise EDuckDBError.Create('Number of values must match number of columns');
+    
+  NewRow := FRowCount;
+  Inc(FRowCount);
+  
+  // Resize all columns
+  for I := 0 to High(FColumns) do
+  begin
+    SetLength(FColumns[I].Data, FRowCount);
+    FColumns[I].Data[NewRow] := TryConvertValue(AValues[I], 
+                                               dctUnknown, 
+                                               FColumns[I].DataType);
+  end;
+end;
+
+procedure TDuckFrame.SetValue(const ARow: Integer; const AColumnName: string;
+                            const AValue: Variant);
+var
+  ColIndex: Integer;
+begin
+  if (ARow < 0) or (ARow >= FRowCount) then
+    raise EDuckDBError.Create('Row index out of range');
+    
+  ColIndex := FindColumnIndex(AColumnName);
+  if ColIndex < 0 then
+    raise EDuckDBError.CreateFmt('Column %s not found', [AColumnName]);
+    
+  FColumns[ColIndex].Data[ARow] := TryConvertValue(AValue,
+                                                  dctUnknown,
+                                                  FColumns[ColIndex].DataType);
 end;
 
 end. 

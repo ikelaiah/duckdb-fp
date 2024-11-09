@@ -33,10 +33,6 @@ type
 
 implementation
 
-procedure ModuleInit; begin end;
-
-procedure ModuleDone; begin end;
-
 class function TDuckDBSampleData.GetConnection: TDuckDBConnection;
 begin
   if FConnection = nil then
@@ -194,11 +190,5 @@ begin
   FConnection.Free;
   inherited;
 end;
-
-initialization
-  ModuleInit;
-
-finalization
-  ModuleDone;
 
 end. 
