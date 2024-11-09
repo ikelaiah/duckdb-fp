@@ -84,8 +84,7 @@ begin
     Frame := TDuckFrame.CreateFromDuckDB(DataDir + DirectorySeparator + 'customers.db', 'customers');
     try
       WriteLn('=== Sample Customer Data ===');
-      WriteLn(Format('Loaded %d rows with %d columns',
-        [Frame.RowCount, Frame.ColumnCount]));
+      WriteLn(Format('Loaded %d rows with %d columns', [Frame.RowCount, Frame.ColumnCount]));
 
       // Get and display column names
       ColNames := Frame.GetColumnNames;
@@ -114,7 +113,6 @@ begin
       WriteLn;
 
       // Show unique counts for a categorical column
-      WriteLn;
       WriteLn('=== Country Distribution ===');
       if Frame.FindColumnIndex('country') >= 0 then
       begin
@@ -123,7 +121,6 @@ begin
       WriteLn;
 
       // Demonstrate handling missing data
-      WriteLn;
       WriteLn('=== Handling Missing Data ===');
       WriteLn('Rows with complete data: ', Frame.DropNA.RowCount);
 
