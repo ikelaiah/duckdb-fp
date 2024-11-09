@@ -411,8 +411,6 @@ DB := TDuckDBConnection.Create(':memory:');
 ...
 ``` 
 
-
-
 ## API Reference
 
 - [DuckDB.Wrapper API Reference](DuckDB.Wrapper-API-Ref.md)
