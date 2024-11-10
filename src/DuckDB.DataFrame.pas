@@ -162,7 +162,7 @@ type
     property Values[Row, Col: Integer]: Variant read GetValue;
     property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
 
-    { Constructors }
+    { Constructors: More Constructors }
     constructor CreateBlank(const AColumnNames: array of string;
                            const AColumnTypes: array of TDuckDBColumnType); overload;
     constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;

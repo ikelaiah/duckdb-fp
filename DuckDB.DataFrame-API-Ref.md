@@ -9,6 +9,9 @@
     - [Column Information (TDuckDBColumn)](#column-information-tduckdbcolumn)
     - [Data Types](#data-types)
     - [Constructor Methods](#constructor-methods)
+      - [Advanced Examples (CSV)](#advanced-examples-csv)
+      - [Common Issues and Solutions (CSV)](#common-issues-and-solutions-csv)
+      - [Best Practices using Constructors](#best-practices-using-constructors)
     - [Data Access Methods](#data-access-methods)
     - [Data Manipulation Methods](#data-manipulation-methods)
     - [Output Methods](#output-methods)
@@ -154,6 +157,7 @@ constructor CreateFromCSV(const AFileName: string;
   - Invalid file format
   - Database or connection errors
 
+
 ```pascal
 constructor CreateBlank(const AColumnNames: array of string;
                        const AColumnTypes: array of TDuckDBColumnType);
@@ -215,6 +219,134 @@ end;
 ```
 
 Note: All constructors create a new instance that must be freed when no longer needed.
+
+#### Advanced Examples (CSV)
+
+```pascal
+program CSVExamples;
+
+{$mode objfpc}{$H+}
+
+uses
+  SysUtils, DuckDB.DataFrame;
+  
+procedure LoadCSVWithOptions;
+var
+  Frame: TDuckFrame;
+begin
+  // Example 1: CSV with semicolon delimiter
+  Frame := TDuckFrame.CreateFromCSV('european_data.csv', True, ';');
+  try
+    WriteLn('Loaded CSV with semicolon delimiter:');
+    Frame.Head(3).Print;  // Show first 3 rows
+  finally
+    Frame.Free;
+  end;
+  
+  // Example 2: CSV without headers
+  Frame := TDuckFrame.CreateFromCSV('raw_data.csv', False);
+  try
+    WriteLn('Loaded CSV without headers:');
+    Frame.Print;
+  finally
+    Frame.Free;
+  end;
+  
+  // Example 3: Tab-delimited file
+  Frame := TDuckFrame.CreateFromCSV('tab_data.txt', True, #9);
+  try
+    WriteLn('Loaded tab-delimited file:');
+    Frame.Print;
+  finally
+    Frame.Free;
+  end;
+end;
+
+// Example with error handling and data validation
+procedure LoadAndValidateCSV(const FileName: string);
+var
+  Frame: TDuckFrame;
+begin
+  WriteLn('Loading ', FileName, '...');
+  
+  try
+    Frame := TDuckFrame.CreateFromCSV(FileName);
+    try
+      // Basic validation
+      if Frame.RowCount = 0 then
+      begin
+        WriteLn('Warning: CSV file is empty');
+        Exit;
+      end;
+      
+      // Display structure information
+      WriteLn(Format('Loaded %d rows and %d columns', [Frame.RowCount, Frame.ColumnCount]));
+      Frame.Info;
+      
+      // Check for missing values
+      WriteLn('Checking for missing values:');
+      Frame.NullCount.Print;
+      
+      // Display data preview
+      WriteLn('Data preview:');
+      Frame.Head(5).Print;
+      
+    finally
+      Frame.Free;
+    end;
+    
+  except
+    on E: EDuckDBError do
+    begin
+      WriteLn('DuckDB Error loading CSV:');
+      WriteLn('  ', E.Message);
+    end;
+    on E: Exception do
+    begin
+      WriteLn('Unexpected error:');
+      WriteLn('  ', E.Message);
+    end;
+  end;
+end;
+
+begin
+  // Example usage
+  LoadAndValidateCSV('sample_data.csv');
+end.
+```
+
+#### Common Issues and Solutions (CSV)
+
+1. **Wrong Delimiter**: If your CSV isn't loading correctly, check if it uses a different delimiter:
+```pascal
+// Try with different delimiters
+Frame := TDuckFrame.CreateFromCSV('data.csv', True, ';');  // Semicolon
+Frame := TDuckFrame.CreateFromCSV('data.csv', True, #9);   // Tab
+```
+
+2. **No Headers**: If your CSV doesn't have headers:
+```pascal
+Frame := TDuckFrame.CreateFromCSV('data.csv', False);
+```
+
+3. **Error Handling**: Always use try-finally blocks:
+```pascal
+Frame := nil;
+try
+  Frame := TDuckFrame.CreateFromCSV('data.csv');
+  // Use Frame here...
+finally
+  Frame.Free;
+end;
+```
+
+#### Best Practices using Constructors
+
+1. Always use try-finally blocks for proper memory management
+2. Validate the data after loading
+3. Check for missing values
+4. Preview the data to ensure it loaded correctly
+5. Use appropriate error handling
 
 ### Data Access Methods
 
