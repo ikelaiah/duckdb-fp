@@ -86,19 +86,14 @@ type
     FColumns: array of TDuckDBColumn;  // Array of columns
     FRowCount: Integer;                // Number of rows in the DataFrame
     
-
-
     { Core: Union-related helper functions for combining dataframes }
     function GetCommonColumns(const Other: TDuckFrame): TStringArray;
     function GetAllColumns(const Other: TDuckFrame): TStringArray;
-    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
     function HasSameStructure(const Other: TDuckFrame): Boolean;
 
     { Stats: Type mapping and statistical calculations }
     function MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
     function IsNumericColumn(const Col: TDuckDBColumn): Boolean;
-    function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
-    function CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
 
     { Private helpers for constructors }
     procedure InitializeBlank(const AColumnNames: array of string; 
@@ -125,6 +120,9 @@ type
     procedure Clear;                                    // Clear all data
     procedure Print(MaxRows: Integer = 10);            // Print DataFrame contents
     
+    { Core: Value conversion helper }
+    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
+    
     { Core: Union operations }
     function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
     function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
@@ -136,7 +134,11 @@ type
     { Data Preview: Methods for inspecting data samples }
     function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
     function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
-    
+
+    { Data Analysis: Helper functions }
+    function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
+    function CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
+
     { Data Analysis: Methods for examining data structure and statistics }
     procedure Describe;                                // Show statistical summary
     function NullCount: TDuckFrame;                   // Count null values per column
@@ -252,11 +254,11 @@ end;
 
 procedure TDuckFrame.Clear;
 var
-  I: Integer;
+  i:Integer;
 begin
-  for I := 0 to Length(FColumns) - 1 do
-    SetLength(FColumns[I].Data, 0);
-  SetLength(FColumns, 0);
+  // Don't clear FColumns, only clear the data
+  for i := 0 to Length(FColumns) - 1 do
+    SetLength(FColumns[i].Data, 0);
   FRowCount := 0;
 end;
 
@@ -1551,8 +1553,7 @@ begin
   end;
 end;
 
-function TDuckFrame.TryConvertValue(const Value: Variant; 
-  FromType, ToType: TDuckDBColumnType): Variant;
+function TDuckFrame.TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
 begin
   if VarIsNull(Value) then
     Exit(Null);
@@ -1973,8 +1974,7 @@ begin
   end;
 end;
 
-procedure TDuckFrame.SetValue(const ARow: Integer; const AColumnName: string;
-                            const AValue: Variant);
+procedure TDuckFrame.SetValue(const ARow: Integer; const AColumnName: string; const AValue: Variant);
 var
   ColIndex: Integer;
 begin
@@ -1986,7 +1986,7 @@ begin
     raise EDuckDBError.CreateFmt('Column %s not found', [AColumnName]);
     
   FColumns[ColIndex].Data[ARow] := TryConvertValue(AValue,
-                                                  dctUnknown,
+                                                   dctUnknown,
                                                   FColumns[ColIndex].DataType);
 end;
 
