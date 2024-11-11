@@ -1,11 +1,11 @@
 unit DuckDB.DataFrame;
 
 {$mode objfpc}{$H+}{$J-}
-
+{$modeswitch advancedrecords}
 interface
 
 uses
-  SysUtils, Classes, Variants, libduckdb, Math, TypInfo, Generics.Collections;
+  SysUtils, Classes, Variants, libduckdb, Math, TypInfo, Generics.Collections, DateUtils;
 
 type
   EDuckDBError = class(Exception);
@@ -46,17 +46,56 @@ type
     dctBigInt,     // 64-bit integer
     dctFloat,      // Single-precision floating point
     dctDouble,     // Double-precision floating point
-    dctDate,       // Date without time
-    dctTimestamp,  // Date with time
+    dctDate,       // Date without time (YYYY-MM-DD)
+    dctTime,       // Time without date (HH:MM:SS.SSS)
+    dctTimestamp,  // Date with time (YYYY-MM-DD HH:MM:SS.SSS)
+    dctInterval,   // Time interval/duration
     dctString,     // Variable-length string
-    dctBlob        // Binary large object
+    dctBlob,       // Binary large object
+    dctDecimal,    // Decimal number with precision and scale
+    dctUUID,       // Universally Unique Identifier
+    dctJSON        // JSON data
   );
 
-  { Column information including metadata and data matching DuckDB's data type}
+  { TDuckDBColumn represents a single column in a DuckDB DataFrame }
   TDuckDBColumn = record
-    Name: string;           // Column name from query
-    DataType: TDuckDBColumnType;  // Column's data type
-    Data: array of Variant; // Actual column data
+    Name: string;           // Column name from query or user definition
+    DataType: TDuckDBColumnType;  // Column's data type (Integer, Double, etc.)
+    Data: array of Variant; // Raw column data stored as Variants for flexibility
+    
+    { Helper functions to return strongly-typed arrays }
+    
+    { Converts the column data to an array of Double values.
+      Null values are converted to 0. }
+    function AsDoubleArray: specialize TArray<Double>;
+    
+    { Converts the column data to an array of Integer values.
+      Null values are converted to 0. }
+    function AsIntegerArray: specialize TArray<Integer>;
+
+    { Converts the column data to an array of Int64 values.
+      Null values are converted to 0. }
+    function AsIntegerArray: specialize TArray<Int64>;
+    
+    { Converts the column data to an array of string values.
+      Null values are converted to empty strings. }
+    function AsStringArray: specialize TArray<string>;
+    
+    { Converts the column data to an array of Boolean values.
+      Null values are converted to False. }
+    function AsBooleanArray: specialize TArray<Boolean>;
+
+    { Converts column data to array of TDate values.
+      Null values are converted to 0 (which is 30/12/1899 in TDate). }
+    function AsDateArray: specialize TArray<TDate>;
+    
+    { Converts column data to array of TTime values.
+      Null values are converted to 0 (which is 00:00:00). }
+    function AsTimeArray: specialize TArray<TTime>;
+
+    { Converts column data to array of TDateTime values.
+    Null values are converted to 0 (which is 30/12/1899 in TDateTime). }
+    function AsDateTimeArray: specialize TArray<TDateTime>;
   end;
 
   { Statistical measures for numeric columns }
@@ -184,7 +223,164 @@ type
 procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
 procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer);
 
+{ Converts a DuckDB column type to its SQL string representation }
+function DuckDBTypeToString(ColumnType: TDuckDBColumnType): string;
+
+{ Converts a SQL type string to its DuckDB column type }
+function StringToDuckDBType(const TypeName: string): TDuckDBColumnType;
+
 implementation
+
+{ TDuckDBColumn helper functions }
+
+{ Converts column data to array of Double values }
+function TDuckDBColumn.AsDoubleArray: specialize TArray<Double>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Convert NULL to 0 (could use NaN instead)
+    else
+      Result[i] := Double(Data[i]);  // Convert Variant to Double
+  end;
+end;
+
+{ Converts column data to array of Integer values }
+function TDuckDBColumn.AsIntegerArray: specialize TArray<Integer>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Convert NULL to 0
+    else
+      Result[i] := Integer(Data[i]);  // Convert Variant to Integer
+  end;
+end;
+
+{ Converts column data to array of Integer values }
+function TDuckDBColumn.AsIntegerArray: specialize TArray<Int64>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Convert NULL to 0
+    else
+      Result[i] := Int64(Data[i]);  // Convert Variant to Int64
+  end;
+end;
+
+{ Converts column data to array of string values }
+function TDuckDBColumn.AsStringArray: specialize TArray<string>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := ''  // Convert NULL to empty string
+    else
+      Result[i] := VarToStr(Data[i]);  // Convert Variant to string using VarToStr
+  end;
+end;
+
+{ Converts column data to array of Boolean values }
+function TDuckDBColumn.AsBooleanArray: specialize TArray<Boolean>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := False  // Convert NULL to False
+    else
+      Result[i] := Boolean(Data[i]);  // Convert Variant to Boolean
+  end;
+end;
+
+function TDuckDBColumn.AsDateArray: specialize TArray<TDate>;
+var
+  i: Integer;
+  TempDateTime: TDateTime;
+begin
+  SetLength(Result, Length(Data));
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Default date (30/12/1899)
+    else if VarIsType(Data[i], varDate) then
+      Result[i] := VarToDateTime(Data[i])  // Keep the raw date value
+    else if TryStrToDateTime(VarToStr(Data[i]), TempDateTime) then
+      Result[i] := Int(TempDateTime)
+    else
+      Result[i] := TDate(VarToDateTime(Data[i]));  // Use the raw value directly
+  end;
+end;
+
+{ Converts column data to array of TTime values 
+  Null values are converted to 0 (which is 00:00:00). 
+  Note: In Pascal/Delphi, a TDateTime value stores the date in the 
+        integer portion and the time in the fractional portion, so 
+        Frac() is also a correct way to extract just the time component. }
+function TDuckDBColumn.AsTimeArray: specialize TArray<TTime>;
+var
+  i: Integer;
+  TempDateTime: TDateTime;
+begin
+  SetLength(Result, Length(Data));
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0
+    else if VarIsType(Data[i], varDate) then
+      Result[i] := VarToDateTime(Data[i])  // Keep the raw time value
+    else if TryStrToTime(VarToStr(Data[i]), TempDateTime) then
+      Result[i] := TempDateTime
+    else
+      Result[i] := TTime(VarToDateTime(Data[i]));  // Use the raw value directly
+  end;
+end;
+
+function TDuckDBColumn.AsDateTimeArray: specialize TArray<TDateTime>;
+var
+  i: Integer;
+begin
+  SetLength(Result, Length(Data));
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Default date/time (30/12/1899 00:00:00)
+    else if VarIsType(Data[i], varDate) then
+      Result[i] := VarToDateTime(Data[i])
+    else
+      Result[i] := StrToDateTime(VarToStr(Data[i]));
+  end;
+end;
 
 { TDuckFrame }
 
@@ -336,6 +532,7 @@ begin
   end;
 end;
 
+{ Maps DuckDB type to TDuckDBColumnType  }
 function TDuckFrame.MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
 begin
   case duckdb_type of
@@ -354,7 +551,7 @@ begin
     DUCKDB_TYPE_DOUBLE: Result := dctDouble;
     DUCKDB_TYPE_TIMESTAMP: Result := dctTimestamp;
     DUCKDB_TYPE_DATE: Result := dctDate;
-    DUCKDB_TYPE_TIME: Result := dctString;
+    DUCKDB_TYPE_TIME: Result := dctTime;
     DUCKDB_TYPE_INTERVAL: Result := dctString;
     DUCKDB_TYPE_VARCHAR: Result := dctString;
     DUCKDB_TYPE_BLOB: Result := dctBlob;
@@ -362,10 +559,13 @@ begin
   end;
 end;
 
+{ Loads data from a DuckDB result / Blank dataframe with DuckDB's datatypes }
 procedure TDuckFrame.LoadFromResult(AResult: pduckdb_result);
 var
   ColCount, Row, Col: Integer;
   StrValue: PAnsiChar;
+  TempDateTime: TDateTime;  // Added for date/timestamp handling
+  TempTime: TTime;         // Added for time handling
 begin
   Clear;
   
@@ -412,12 +612,43 @@ begin
             StrValue := duckdb_value_varchar(AResult, Col, Row);
             if StrValue <> nil then
             begin
-              FColumns[Col].Data[Row] := string(AnsiString(StrValue));
+              if TryStrToDateTime(string(AnsiString(StrValue)), TempDateTime) then
+                FColumns[Col].Data[Row] := Int(TempDateTime)  // Store just the date portion
+              else
+                FColumns[Col].Data[Row] := Null;
               duckdb_free(StrValue);
             end
             else
               FColumns[Col].Data[Row] := Null;
           end;
+        dctTime:
+          begin
+            StrValue := duckdb_value_varchar(AResult, Col, Row);
+            if StrValue <> nil then
+            begin
+              if TryStrToTime(string(AnsiString(StrValue)), TempTime) then
+                FColumns[Col].Data[Row] := TempTime
+              else
+                FColumns[Col].Data[Row] := Null;
+              duckdb_free(StrValue);
+            end
+            else
+              FColumns[Col].Data[Row] := Null;
+          end;
+        dctTimestamp:
+          begin
+            StrValue := duckdb_value_varchar(AResult, Col, Row);
+            if StrValue <> nil then
+            begin
+              if TryStrToDateTime(string(AnsiString(StrValue)), TempDateTime) then
+                FColumns[Col].Data[Row] := TempDateTime  // Store full datetime value
+              else
+                FColumns[Col].Data[Row] := Null;
+              duckdb_free(StrValue);
+            end
+            else
+              FColumns[Col].Data[Row] := Null;
+          end;    
         dctString:
           begin
             StrValue := duckdb_value_varchar(AResult, Col, Row);
@@ -466,7 +697,21 @@ begin
     ColWidths[Col] := Length(FColumns[Col].Name);
     for Row := 0 to FRowCount - 1 do
     begin
-      S := VarToStr(FColumns[Col].Data[Row]);
+      // Format date/time values properly for width calculation
+      if VarIsNull(FColumns[Col].Data[Row]) then
+        S := ''
+      else
+        case FColumns[Col].DataType of
+          dctDate:
+            S := FormatDateTime('dd/mm/yyyy', VarToDateTime(FColumns[Col].Data[Row]));
+          dctTime:
+            S := FormatDateTime('hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+          dctTimestamp:
+            S := FormatDateTime('dd/mm/yyyy hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+          else
+            S := VarToStr(FColumns[Col].Data[Row]);
+        end;
+      
       if Length(S) > ColWidths[Col] then
         ColWidths[Col] := Length(S);
     end;
@@ -496,7 +741,22 @@ begin
     for Row := StartRow to EndRow - 1 do
     begin
       for Col := 0 to Length(FColumns) - 1 do
-        Write(Format('%-*s ', [ColWidths[Col] + 1, VarToStr(FColumns[Col].Data[Row])]));
+      begin
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          S := ''
+        else
+          case FColumns[Col].DataType of
+            dctDate:
+              S := FormatDateTime('dd/mm/yyyy', VarToDateTime(FColumns[Col].Data[Row]));
+            dctTime:
+              S := FormatDateTime('hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+            dctTimestamp:
+              S := FormatDateTime('dd/mm/yyyy hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+            else
+              S := VarToStr(FColumns[Col].Data[Row]);
+          end;
+        Write(Format('%-*s ', [ColWidths[Col] + 1, S]));
+      end;
       WriteLn;
     end;
     
@@ -508,7 +768,22 @@ begin
     for Row := StartRow to EndRow do
     begin
       for Col := 0 to Length(FColumns) - 1 do
-        Write(Format('%-*s ', [ColWidths[Col] + 1, VarToStr(FColumns[Col].Data[Row])]));
+      begin
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          S := ''
+        else
+          case FColumns[Col].DataType of
+            dctDate:
+              S := FormatDateTime('dd/mm/yyyy', VarToDateTime(FColumns[Col].Data[Row]));
+            dctTime:
+              S := FormatDateTime('hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+            dctTimestamp:
+              S := FormatDateTime('dd/mm/yyyy hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+            else
+              S := VarToStr(FColumns[Col].Data[Row]);
+          end;
+        Write(Format('%-*s ', [ColWidths[Col] + 1, S]));
+      end;
       WriteLn;
     end;
     
@@ -520,7 +795,22 @@ begin
     for Row := 0 to FRowCount - 1 do
     begin
       for Col := 0 to Length(FColumns) - 1 do
-        Write(Format('%-*s ', [ColWidths[Col] + 1, VarToStr(FColumns[Col].Data[Row])]));
+      begin
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          S := ''
+        else
+          case FColumns[Col].DataType of
+            dctDate:
+              S := FormatDateTime('dd/mm/yyyy', VarToDateTime(FColumns[Col].Data[Row]));
+            dctTime:
+              S := FormatDateTime('hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+            dctTimestamp:
+              S := FormatDateTime('dd/mm/yyyy hh:nn:ss', VarToDateTime(FColumns[Col].Data[Row]));
+            else
+              S := VarToStr(FColumns[Col].Data[Row]);
+          end;
+        Write(Format('%-*s ', [ColWidths[Col] + 1, S]));
+      end;
       WriteLn;
     end;
   end;
@@ -790,7 +1080,15 @@ var
   Position: Double;
   Lower: Integer;
   Delta: Double;
+  ClampedPercentile: Double;
 begin
+  // Clamp percentile value to [0,1] range
+  ClampedPercentile := Percentile;
+  if ClampedPercentile < 0 then
+    ClampedPercentile := 0
+  else if ClampedPercentile > 1 then
+    ClampedPercentile := 1;
+
   // Handle empty or single-value arrays
   N := Length(Values);
   if N = 0 then
@@ -799,7 +1097,7 @@ begin
     Exit(Values[0]);
 
   // Calculate interpolation position
-  Position := Percentile * (N - 1);
+  Position := ClampedPercentile * (N - 1);
   Lower := Trunc(Position);
   Delta := Position - Lower;
   
@@ -1554,27 +1852,76 @@ begin
 end;
 
 function TDuckFrame.TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
+var
+  TempDateTime: TDateTime;
 begin
+  // Handle null values
   if VarIsNull(Value) then
     Exit(Null);
     
   try
     case ToType of
+      // Boolean conversion
       dctBoolean:
         Result := Boolean(Value);
+        
+      // Integer types
       dctTinyInt, dctSmallInt, dctInteger:
         Result := Integer(Value);
+        
       dctBigInt:
         Result := Int64(Value);
-      dctFloat, dctDouble:
+        
+      // Floating point types
+      dctFloat, dctDouble, dctDecimal:
         Result := Double(Value);
-      dctString:
+        
+      // Date and Time types
+      // Date type
+      dctDate:
+        begin
+          if VarIsType(Value, varDate) then
+            Result := Value  // Keep the original date value
+          else if TryStrToDateTime(VarToStr(Value), TempDateTime) then
+            Result := Int(TempDateTime)
+          else
+            Result := 0;
+        end;
+
+      // Time type
+      dctTime:
+        begin
+          if VarIsType(Value, varDate) then
+            Result := Frac(VarToDateTime(Value))
+          else if TryStrToTime(VarToStr(Value), TempDateTime) then
+            Result := Frac(TempDateTime)
+          else
+            Result := 0;
+        end;
+
+      // Timestamp type (full datetime)
+      dctTimestamp:
+        begin
+          if VarIsType(Value, varDate) then
+            Result := Value  // Keep the original datetime value
+          else if TryStrToDateTime(VarToStr(Value), TempDateTime) then
+            Result := TempDateTime
+          else
+            Result := 0;
+        end;
+          
+      // String and other types
+      dctString, dctInterval, dctUUID, dctJSON:
         Result := VarToStr(Value);
+        
+      dctBlob:
+        Result := Value;  // Keep BLOB data as-is
+        
       else
-        Result := Value;  // Keep original if no conversion needed
+        Result := Value;  // Pass through for unknown types
     end;
   except
-    Result := Null;  // Return NULL if conversion fails
+    Result := Null;  // Return Null if conversion fails
   end;
 end;
 
@@ -1988,6 +2335,54 @@ begin
   FColumns[ColIndex].Data[ARow] := TryConvertValue(AValue,
                                                    dctUnknown,
                                                   FColumns[ColIndex].DataType);
+end;
+
+{ Converts a DuckDB column type to its SQL string representation }
+function DuckDBTypeToString(ColumnType: TDuckDBColumnType): string;
+begin
+  case ColumnType of
+    dctUnknown: Result := 'UNKNOWN';
+    dctBoolean: Result := 'BOOLEAN';
+    dctTinyInt: Result := 'TINYINT';
+    dctSmallInt: Result := 'SMALLINT';
+    dctInteger: Result := 'INTEGER';
+    dctBigInt: Result := 'BIGINT';
+    dctFloat: Result := 'FLOAT';
+    dctDouble: Result := 'DOUBLE';
+    dctDate: Result := 'DATE';
+    dctTime: Result := 'TIME';
+    dctTimestamp: Result := 'TIMESTAMP';
+    dctInterval: Result := 'INTERVAL';
+    dctString: Result := 'VARCHAR';
+    dctBlob: Result := 'BLOB';
+    dctDecimal: Result := 'DECIMAL';
+    dctUUID: Result := 'UUID';
+    dctJSON: Result := 'JSON';
+  else
+    Result := 'UNKNOWN';
+  end;
+end;
+
+{ Converts a SQL type string to its DuckDB column type }
+function StringToDuckDBType(const TypeName: string): TDuckDBColumnType;
+begin
+  if SameText(TypeName, 'BOOLEAN') then Result := dctBoolean
+  else if SameText(TypeName, 'TINYINT') then Result := dctTinyInt
+  else if SameText(TypeName, 'SMALLINT') then Result := dctSmallInt
+  else if SameText(TypeName, 'INTEGER') or SameText(TypeName, 'INT') then Result := dctInteger
+  else if SameText(TypeName, 'BIGINT') then Result := dctBigInt
+  else if SameText(TypeName, 'FLOAT') then Result := dctFloat
+  else if SameText(TypeName, 'DOUBLE') then Result := dctDouble
+  else if SameText(TypeName, 'DATE') then Result := dctDate
+  else if SameText(TypeName, 'TIME') then Result := dctTime
+  else if SameText(TypeName, 'TIMESTAMP') then Result := dctTimestamp
+  else if SameText(TypeName, 'INTERVAL') then Result := dctInterval
+  else if SameText(TypeName, 'VARCHAR') or SameText(TypeName, 'STRING') then Result := dctString
+  else if SameText(TypeName, 'BLOB') then Result := dctBlob
+  else if SameText(TypeName, 'DECIMAL') or SameText(TypeName, 'NUMERIC') then Result := dctDecimal
+  else if SameText(TypeName, 'UUID') then Result := dctUUID
+  else if SameText(TypeName, 'JSON') then Result := dctJSON
+  else Result := dctUnknown;
 end;
 
 end. 

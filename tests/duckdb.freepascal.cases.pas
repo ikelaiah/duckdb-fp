@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, fpcunit, testutils, testregistry, DuckDB.DataFrame,
-  Variants, DuckDB.Wrapper;
+  Variants, DuckDB.Wrapper, DateUtils;
 
 type
   { TDuckDBDataFrameTest }
@@ -45,6 +45,7 @@ type
     procedure TestGetColumnByName;
     procedure TestGetColumnNames;
     procedure TestFindColumnIndex;
+    procedure TestDateTimeArrays;
 
     // Data Access
     procedure TestHead;
@@ -80,6 +81,7 @@ type
 
     // Type Conversion
     procedure TestTryConvertValue;
+    procedure TestTypeConversion;
 
     // Print and Info
     procedure TestPrint;
@@ -1189,6 +1191,75 @@ begin
     Frame.Free;
   end;
 end;
+
+procedure TDuckDBDataFrameTest.TestDateTimeArrays;
+var
+  Frame: TDuckFrame;
+  Column: TDuckDBColumn;
+  DateTimes: specialize TArray<TDateTime>;
+  Dates: specialize TArray<TDate>;
+  Times: specialize TArray<TTime>;
+begin
+  // Create frame with date/time data
+  Frame := TDuckFrame.CreateBlank(['Timestamp', 'Date', 'Time'],
+    [dctTimestamp, dctDate, dctTime]);
+    
+  Frame.AddRow([
+    EncodeDateTime(2023, 11, 25, 10, 30, 0, 0),  // 10:30 AM, Nov 25, 2023
+    EncodeDate(2023, 11, 25),                     // Nov 25, 2023
+    EncodeTime(10, 30, 0, 0)                      // 10:30 AM
+  ]);
+
+  try
+    // Test timestamp column
+    Column := Frame.GetColumnByName('Timestamp');
+    DateTimes := Column.AsDateTimeArray;
+    AssertEquals('Year of timestamp', 2023,
+      YearOf(DateTimes[0]));
+    AssertEquals('Hour of timestamp', 10,
+      HourOf(DateTimes[0]));
+      
+    // Test date column
+    Column := Frame.GetColumnByName('Date');
+    Dates := Column.AsDateArray;
+    AssertEquals('Year of date', 2023, YearOf(Dates[0]));
+    AssertEquals('Month of date', 11, MonthOf(Dates[0]));
+      
+    // Test time column
+    Column := Frame.GetColumnByName('Time');
+    Times := Column.AsTimeArray;
+    AssertEquals('Hour of time', 10, HourOf(Times[0]));
+    AssertEquals('Minute of time', 30, MinuteOf(Times[0]));
+
+  finally
+    Frame.Free;
+  end;
+end;
+
+
+procedure TDuckDBDataFrameTest.TestTypeConversion;
+begin
+  // Test DuckDBTypeToString
+  AssertEquals('Integer type string', 'INTEGER',
+    DuckDBTypeToString(dctInteger));
+  AssertEquals('Time type string', 'TIME',
+    DuckDBTypeToString(dctTime));
+
+  // Test StringToDuckDBType - Fix: Compare ordinal values
+  AssertEquals('INTEGER to type', Ord(dctInteger),
+    Ord(StringToDuckDBType('INTEGER')));
+  AssertEquals('INT to type', Ord(dctInteger),
+    Ord(StringToDuckDBType('INT')));
+  AssertEquals('TIME to type', Ord(dctTime),
+    Ord(StringToDuckDBType('TIME')));
+
+  // Test round-trip conversion - Fix: Compare ordinal values
+  AssertEquals('Round-trip INTEGER', Ord(dctInteger),
+    Ord(StringToDuckDBType(DuckDBTypeToString(dctInteger))));
+  AssertEquals('Round-trip TIME', Ord(dctTime),
+    Ord(StringToDuckDBType(DuckDBTypeToString(dctTime))));
+end;
+
 
 initialization
 
