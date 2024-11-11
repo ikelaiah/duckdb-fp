@@ -8,6 +8,10 @@
     - [Properties](#properties)
     - [Column Information (TDuckDBColumn)](#column-information-tduckdbcolumn)
     - [Data Types](#data-types)
+    - [Date/Time Handling](#datetime-handling)
+      - [Date Values (dctDate)](#date-values-dctdate)
+      - [Time Values (dctTime)](#time-values-dcttime)
+      - [Timestamp Values (dctTimestamp)](#timestamp-values-dcttimestamp)
     - [Constructor Methods](#constructor-methods)
       - [Advanced Examples (CSV)](#advanced-examples-csv)
       - [Common Issues and Solutions (CSV)](#common-issues-and-solutions-csv)
@@ -100,20 +104,67 @@ property ValuesByName[Row: Integer; ColName: string]: Variant;
 ### Data Types
 
 ```pascal
-TDuckDBColumnType = (
-  dctUnknown,
-  dctBoolean,
-  dctTinyInt,
-  dctSmallInt,
-  dctInteger,
-  dctBigInt,
-  dctFloat,
-  dctDouble,
-  dctDate,
-  dctTimestamp,
-  dctString,
-  dctBlob
-);
+  TDuckDBColumnType = (
+    dctUnknown,    // Unknown or unsupported type
+    dctBoolean,    // Boolean (true/false)
+    dctTinyInt,    // 8-bit integer
+    dctSmallInt,   // 16-bit integer
+    dctInteger,    // 32-bit integer
+    dctBigInt,     // 64-bit integer
+    dctFloat,      // Single-precision floating point
+    dctDouble,     // Double-precision floating point
+    dctDate,       // Date without time (YYYY-MM-DD)
+    dctTime,       // Time without date (HH:MM:SS.SSS)
+    dctTimestamp,  // Date with time (YYYY-MM-DD HH:MM:SS.SSS)
+    dctInterval,   // Time interval/duration
+    dctString,     // Variable-length string
+    dctBlob,       // Binary large object
+    dctDecimal,    // Decimal number with precision and scale
+    dctUUID,       // Universally Unique Identifier
+    dctJSON        // JSON data
+  );
+```
+
+### Date/Time Handling
+
+The DataFrame supports three date/time-related types:
+
+#### Date Values (dctDate)
+- Stored internally as TDate (integer part of TDateTime)
+- Default/null value is 0 (30/12/1899)
+- Displayed in 'dd/mm/yyyy' format
+- Access via `TDuckDBColumn.AsDateArray`
+
+#### Time Values (dctTime)
+- Stored internally as TTime (fractional part of TDateTime)
+- Default/null value is 0 (00:00:00)
+- Displayed in 'hh:nn:ss' format
+- Access via `TDuckDBColumn.AsTimeArray`
+
+#### Timestamp Values (dctTimestamp)
+- Stored internally as TDateTime (full date and time)
+- Default/null value is 0 (30/12/1899 00:00:00)
+- Displayed in 'dd/mm/yyyy hh:nn:ss' format
+- Access via `TDuckDBColumn.AsDateTimeArray`
+
+Example:
+```pascal
+var
+  Frame: TDuckFrame;
+begin
+  Frame := TDuckFrame.CreateBlank(
+    ['Timestamp', 'Date', 'Time'],
+    [dctTimestamp, dctDate, dctTime]
+  );
+  
+  Frame.AddRow([
+    EncodeDateTime(2023, 11, 25, 10, 30, 0, 0),  // Timestamp
+    EncodeDate(2023, 11, 25),                     // Date
+    EncodeTime(10, 30, 0, 0)                      // Time
+  ]);
+  
+  Frame.Print;  // Will display formatted date/time values
+end;
 ```
 
 ### Constructor Methods
@@ -399,20 +450,20 @@ function Select(const Columns: array of string): TDuckFrame;
 
 ```pascal
 var
-  DF, SelectedDF: TDuckFrame;
+  Frame: TDuckFrame;
 begin
-  DF := DB.Query('SELECT * FROM test');
-  try
-    // Select specific columns
-    SelectedDF := DF.Select(['id', 'name']);
-    try
-      SelectedDF.Print;
-    finally
-      SelectedDF.Free;
-    end;
-  finally
-    DF.Free;
-  end;
+  Frame := TDuckFrame.CreateBlank(
+    ['Timestamp', 'Date', 'Time'],
+    [dctTimestamp, dctDate, dctTime]
+  );
+  
+  Frame.AddRow([
+    EncodeDateTime(2023, 11, 25, 10, 30, 0, 0),  // Timestamp
+    EncodeDate(2023, 11, 25),                     // Date
+    EncodeTime(10, 30, 0, 0)                      // Time
+  ]);
+  
+  Frame.Print;  // Will display formatted date/time values
 end;
 ```
 
