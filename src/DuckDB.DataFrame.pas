@@ -102,17 +102,17 @@ type
   TColumnStats = record
     Count: Integer;         // Total number of rows
     Mean: Double;           // Average value
-    StdDev: Double;        // Standard deviation
-    Skewness: Double;      // Measure of distribution asymmetry (0 is symmetric)
-    Kurtosis: Double;      // Measure of "tailedness" compared to normal distribution
+    StdDev: Double;         // Standard deviation
+    Skewness: Double;       // Measure of distribution asymmetry (0 is symmetric)
+    Kurtosis: Double;       // Measure of "tailedness" compared to normal distribution
     NonMissingRate: Double; // Percentage of non-null values (1.0 = no nulls)
-    Min: Variant;          // Minimum value
-    Q1: Double;            // First quartile (25th percentile)
-    Median: Double;        // Median (50th percentile)
-    Q3: Double;            // Third quartile (75th percentile)
-    Max: Variant;          // Maximum value
-    NullCount: Integer;    // Number of null values
-    Ordered: Boolean;        // Is the data ordered?
+    Min: Variant;           // Minimum value
+    Q1: Double;             // First quartile (25th percentile)
+    Median: Double;         // Median (50th percentile)
+    Q3: Double;             // Third quartile (75th percentile)
+    Max: Variant;           // Maximum value
+    NullCount: Integer;     // Number of null values
+    Ordered: Boolean;       // Is the data ordered?
     NUnique: Integer;       // Number of unique values
     TopCounts: string;      // Most frequent values and their counts
   end;
@@ -157,7 +157,7 @@ type
     { Core: DataFrame operations }
     procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
     procedure Clear;                                    // Clear all data
-    procedure Print(MaxRows: Integer = 10);            // Print DataFrame contents
+    procedure Print(MaxRows: Integer = 10);             // Print DataFrame contents
     
     { Core: Value conversion helper }
     function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
@@ -180,11 +180,11 @@ type
 
     { Data Analysis: Methods for examining data structure and statistics }
     procedure Describe;                                // Show statistical summary
-    function NullCount: TDuckFrame;                   // Count null values per column
+    function NullCount: TDuckFrame;                    // Count null values per column
     procedure Info; 
     
     { Data Cleaning: Methods for handling missing data }
-    function DropNA: TDuckFrame;                  // Remove rows with any null values
+    function DropNA: TDuckFrame;                        // Remove rows with any null values
     function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
     
     { Stats: Advanced analysis methods }
@@ -608,6 +608,7 @@ begin
         dctDouble:
           FColumns[Col].Data[Row] := duckdb_value_double(AResult, Col, Row);
         dctDate:
+        { Store date portion of TDateTime, which is an integer value }
           begin
             StrValue := duckdb_value_varchar(AResult, Col, Row);
             if StrValue <> nil then
@@ -622,6 +623,7 @@ begin
               FColumns[Col].Data[Row] := Null;
           end;
         dctTime:
+        { Store time portion of TDateTime, which is a fractional value }
           begin
             StrValue := duckdb_value_varchar(AResult, Col, Row);
             if StrValue <> nil then
@@ -636,6 +638,8 @@ begin
               FColumns[Col].Data[Row] := Null;
           end;
         dctTimestamp:
+        { Store full datetime value, which is a Double where the integer part
+          is the date and the fractional part is the time. }
           begin
             StrValue := duckdb_value_varchar(AResult, Col, Row);
             if StrValue <> nil then
