@@ -48,8 +48,8 @@ This guide will help you get started with the DuckDB FreePascal wrapper, coverin
 ### Prerequisites
 
 - FreePascal 3.2.2 or later
-- DuckDB 1.1.2 or later
-- Lazarus 3.6 (optional, for IDE support)
+- Lazarus 3.6 (to run examples and tests)
+- DuckDB DLL v1.1.2 or later
 
 ### Installation
 
