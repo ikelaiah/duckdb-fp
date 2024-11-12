@@ -328,4 +328,10 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 - [DuckDB Team](https://duckdb.org/) for the amazing database engine.
 - [Free Pascal Dev Team](https://www.freepascal.org/) for the Pascal compiler.
 - [Lazarus IDE Team](https://www.lazarus-ide.org/) for such an amazing IDE.
-- [rednose🇳🇱🇪🇺](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368) of the Unofficial ree Pascal Discord for providing the initial DuckDB Pascal bindings  via [Chet](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368).
+- [rednose🇳🇱🇪🇺](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368) of the [Unofficial Free Pascal discord server](https://discord.com/channels/570025060312547359/570091337173696513) for providing the initial DuckDB Pascal bindings via [Chet](https://discord.com/channels/570025060312547359/570025355717509147/1299342586464698368).
+- The kind and helpful individuals on various online platforms such as;
+    - [Unofficial Free Pascal discord server](https://discord.com/channels/570025060312547359/570091337173696513).
+    - [Free Pascal & Lazarus forum](https://forum.lazarus.freepascal.org/index.php).
+    - [Tweaking4All Delphi, Lazarus, Free Pascal forum](https://www.tweaking4all.com/forum/delphi-lazarus-free-pascal/).
+    - [Laz Planet - Blogspot](https://lazplanet.blogspot.com/) / [Laz Planet - GitLab](https://lazplanet.gitlab.io/).
+    - [Delphi Basics](https://www.delphibasics.co.uk/index.html).
