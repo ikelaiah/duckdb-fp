@@ -187,6 +187,81 @@ end.
 - Ensure all tests pass before submitting PR
 - Add test cases for bug fixes
 
+## Current Output
+
+### Summary
+
+```
+Number of run tests: 42
+Number of errors:    10
+Number of failures:  0
+```
+
+### Expected Errors
+
+```
+List of errors:
+  Error:
+    Message:           TDuckDBDataFrameTest.TestCreateBlankMismatchedArrays: Column names and types arrays must have same length
+    Exception class:   EDuckDBError
+    Exception message: Column names and types arrays must have same length
+        at   $0000000100063922
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestAddColumn: Column NewColumn already exists
+    Exception class:   EDuckDBError
+    Exception message: Column NewColumn already exists
+        at   $0000000100063A86
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestAddRow: Number of values must match number of columns
+    Exception class:   EDuckDBError
+    Exception message: Number of values must match number of columns
+        at   $0000000100063C3E
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestGetColumnByName: Column "NonExistentColumn" not found
+    Exception class:   EDuckDBError
+    Exception message: Column "NonExistentColumn" not found
+        at   $0000000100056EB6
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestValuesByName: Row index out of range
+    Exception class:   EDuckDBError
+    Exception message: Row index out of range
+        at   $0000000100056F5E
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestValues: Row index out of range
+    Exception class:   EDuckDBError
+    Exception message: Row index out of range
+        at   $0000000100056F5E
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestInvalidColumnAccess: Column "NonExistentColumn" not found
+    Exception class:   EDuckDBError
+    Exception message: Column "NonExistentColumn" not found
+        at   $000000010005704D
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestInvalidRowAccess: Row index out of range
+    Exception class:   EDuckDBError
+    Exception message: Row index out of range
+        at   $0000000100056F5E
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestInvalidCSVFile: File not found: nonexistent.csv
+    Exception class:   EDuckDBError
+    Exception message: File not found: nonexistent.csv
+        at   $0000000100063630
+
+  Error:
+    Message:           TDuckDBDataFrameTest.TestCreateFromParquetErrors: File not found: nonexistent.parquet
+    Exception class:   EDuckDBError
+    Exception message: File not found: nonexistent.parquet
+        at   $0000000100064354la
+```
+
 ---
 
 Last updated: 2024-11-12

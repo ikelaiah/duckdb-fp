@@ -210,6 +210,8 @@ type
     constructor CreateFromCSV(const AFileName: string; 
                               const AHasHeaders: Boolean = True;
                               const ADelimiter: Char = ','); overload;
+    constructor CreateFromParquet(const AFileName: string); overload;
+    constructor CreateFromParquet(const Files: array of string); overload;
                             
     { Methods for manual construction }
     procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
@@ -2387,6 +2389,135 @@ begin
   else if SameText(TypeName, 'UUID') then Result := dctUUID
   else if SameText(TypeName, 'JSON') then Result := dctJSON
   else Result := dctUnknown;
+end;
+
+constructor TDuckFrame.CreateFromParquet(const AFileName: string);
+var
+  DB: p_duckdb_database;
+  Conn: p_duckdb_connection;
+  Result: duckdb_result;
+  State: duckdb_state;
+  SQLQuery: string;
+begin
+  inherited Create;
+  
+  if not FileExists(AFileName) then
+    raise EDuckDBError.Create('File not found: ' + AFileName);
+
+  try
+    // Open an in-memory database
+    State := duckdb_open(nil, @DB);
+    if State = DuckDBError then
+      raise EDuckDBError.Create('Failed to create in-memory database');
+
+    try
+      // Create a connection
+      State := duckdb_connect(DB, @Conn);
+      if State = DuckDBError then
+        raise EDuckDBError.Create('Failed to create connection');
+
+      try
+        // Create query with proper escaping
+        SQLQuery := Format('SELECT * FROM read_parquet(''%s'')',
+          [StringReplace(AFileName, '''', '''''', [rfReplaceAll])]);
+
+        // Execute query
+        State := duckdb_query(Conn, PAnsiChar(AnsiString(SQLQuery)), @Result);
+        if State = DuckDBError then
+          raise EDuckDBError.Create('Failed to read Parquet file');
+
+        try
+          LoadFromResult(@Result);
+        finally
+          duckdb_destroy_result(@Result);
+        end;
+
+      finally
+        duckdb_disconnect(@Conn);
+      end;
+
+    finally
+      duckdb_close(@DB);
+    end;
+
+  except
+    on E: Exception do
+    begin
+      Free;
+      raise;
+    end;
+  end;
+end;
+
+constructor TDuckFrame.CreateFromParquet(const Files: array of string);
+var
+  DB: p_duckdb_database;
+  Conn: p_duckdb_connection;
+  Result: duckdb_result;
+  State: duckdb_state;
+  SQLQuery: string;
+  FileList: string;
+  I: Integer;
+begin
+  inherited Create;
+  
+  if Length(Files) = 0 then
+    raise EDuckDBError.Create('No files specified for Parquet reading');
+
+  try
+    // Open an in-memory database
+    State := duckdb_open(nil, @DB);
+    if State = DuckDBError then
+      raise EDuckDBError.Create('Failed to create in-memory database');
+
+    try
+      // Create a connection
+      State := duckdb_connect(DB, @Conn);
+      if State = DuckDBError then
+        raise EDuckDBError.Create('Failed to create connection');
+
+      try
+        // Build file list string
+        FileList := '[';
+        for I := 0 to High(Files) do
+        begin
+          if I > 0 then
+            FileList := FileList + ', ';
+          FileList := FileList + Format('''%s''',
+            [StringReplace(Files[I], '''', '''''', [rfReplaceAll])]);
+        end;
+        FileList := FileList + ']';
+
+        // Create query
+        SQLQuery := Format('SELECT * FROM read_parquet(%s)', [FileList]);
+
+        // Execute query
+        State := duckdb_query(Conn, PAnsiChar(AnsiString(SQLQuery)), @Result);
+        if State = DuckDBError then
+          raise EDuckDBError.Create('Failed to read Parquet files');
+
+        try
+          // Load the result into our frame
+          LoadFromResult(@Result);
+        finally
+          duckdb_destroy_result(@Result);
+        end;
+
+      finally
+        duckdb_disconnect(@Conn);
+      end;
+
+    finally
+      duckdb_close(@DB);
+    end;
+
+  except
+    on E: Exception do
+    begin
+      Free;  // Clean up if constructor fails
+      raise;
+    end;
+  end;
 end;
 
 end. 

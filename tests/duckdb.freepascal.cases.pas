@@ -24,6 +24,8 @@ type
     function CreateNumericFrame: TDuckFrame;
     procedure AssertFrameEquals(Expected, Actual: TDuckFrame; const Msg: string = '');
     procedure DeleteDirectoryRecursively(const DirName: string);
+    procedure CreateSampleParquetFile(const FilePath: string);
+    procedure CreateMultipleParquetFiles;
 
   protected
     procedure SetUp; override;
@@ -86,6 +88,12 @@ type
     // Print and Info
     procedure TestPrint;
     procedure TestInfo;
+
+    // Parquet Tests
+    procedure TestCreateFromSingleParquet;
+    procedure TestCreateFromMultipleParquet;
+    procedure TestCreateFromNonParquetExtension;
+    procedure TestCreateFromParquetErrors;
   end;
 
 implementation
@@ -285,6 +293,35 @@ begin
   finally
     List.Free;
   end;
+end;
+
+procedure TDuckDBDataFrameTest.CreateSampleParquetFile(const FilePath: string);
+var
+  DB: TDuckDBConnection;
+begin
+  DB := TDuckDBConnection.Create;
+  try
+    DB.Open;
+    // Create a table and save it as Parquet
+    DB.ExecuteSQL(
+      'CREATE TABLE test(id INTEGER, name VARCHAR, value DOUBLE);' +
+      'INSERT INTO test VALUES ' +
+      '(1, ''Alice'', 10.5),' +
+      '(2, ''Bob'', 20.7),' +
+      '(3, ''Charlie'', 15.3);' +
+      Format('COPY test TO ''%s'' (FORMAT PARQUET);',
+        [StringReplace(FilePath, '''', '''''', [rfReplaceAll])])
+    );
+  finally
+    DB.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.CreateMultipleParquetFiles;
+begin
+  CreateSampleParquetFile(FTempDir + 'file1.parquet');
+  CreateSampleParquetFile(FTempDir + 'file2.parquet');
+  CreateSampleParquetFile(FTempDir + 'file3.parquet');
 end;
 
 procedure TDuckDBDataFrameTest.TestCreateFromCSVWithHeaders;
@@ -1260,6 +1297,104 @@ begin
     Ord(StringToDuckDBType(DuckDBTypeToString(dctTime))));
 end;
 
+procedure TDuckDBDataFrameTest.TestCreateFromSingleParquet;
+var
+  Frame: TDuckFrame;
+  FilePath: string;
+begin
+  FilePath := FTempDir + 'test.parquet';
+  CreateSampleParquetFile(FilePath);
+
+  Frame := TDuckFrame.CreateFromParquet(FilePath);
+  try
+    // Test structure
+    AssertEquals('Column count', 3, Frame.ColumnCount);
+    AssertEquals('Row count', 3, Frame.RowCount);
+    
+    // Test column names
+    AssertEquals('First column name', 'id', Frame.Columns[0].Name);
+    AssertEquals('Second column name', 'name', Frame.Columns[1].Name);
+    AssertEquals('Third column name', 'value', Frame.Columns[2].Name);
+    
+    // Test values
+    AssertEquals('First ID', 1, Integer(Frame.Values[0, 0]));
+    AssertEquals('First Name', 'Alice', string(Frame.Values[0, 1]));
+    AssertEquals('First Value', 10.5, Double(Frame.Values[0, 2]));
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestCreateFromMultipleParquet;
+var
+  Frame: TDuckFrame;
+  Files: array of string;
+begin
+  CreateMultipleParquetFiles;
+  
+  SetLength(Files, 3);
+  Files[0] := FTempDir + 'file1.parquet';
+  Files[1] := FTempDir + 'file2.parquet';
+  Files[2] := FTempDir + 'file3.parquet';
+
+  Frame := TDuckFrame.CreateFromParquet(Files);
+  try
+    Frame.Print();
+    // Test structure (should have combined rows from all files)
+    AssertEquals('Column count', 3, Frame.ColumnCount);
+    AssertEquals('Row count', 9, Frame.RowCount);  // 3 files × 3 rows each
+    
+    // Test column names (should be same as single file)
+    AssertEquals('First column name', 'id', Frame.Columns[0].Name);
+    AssertEquals('Second column name', 'name', Frame.Columns[1].Name);
+    AssertEquals('Third column name', 'value', Frame.Columns[2].Name);
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestCreateFromNonParquetExtension;
+var
+  Frame: TDuckFrame;
+  FilePath: string;
+begin
+  FilePath := FTempDir + 'test.parq';  // Different extension
+  CreateSampleParquetFile(FilePath);
+
+  Frame := TDuckFrame.CreateFromParquet(FilePath);
+  try
+    // Should work the same regardless of extension
+    AssertEquals('Column count', 3, Frame.ColumnCount);
+    AssertEquals('Row count', 3, Frame.RowCount);
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestCreateFromParquetErrors;
+var
+  Frame: TDuckFrame;
+  EmptyFiles: array of string;
+begin
+  // Test non-existent file
+  try
+    Frame := TDuckFrame.CreateFromParquet('nonexistent.parquet');
+    Fail('Should raise exception for non-existent file');
+  except
+    on E: EDuckDBError do
+      ; // Expected exception
+  end;
+
+  // Test empty file list
+  SetLength(EmptyFiles, 0);  // Initialize empty array
+  try
+    Frame := TDuckFrame.CreateFromParquet(EmptyFiles);
+    Fail('Should raise exception for empty file list');
+  except
+    on E: EDuckDBError do
+      ; // Expected exception
+  end;
+end;
 
 initialization
 

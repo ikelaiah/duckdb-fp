@@ -14,6 +14,7 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
     - [Getting Started from Scratch](#getting-started-from-scratch)
     - [Getting Started with DuckDB Tables](#getting-started-with-duckdb-tables)
     - [Getting Started with CSV Files](#getting-started-with-csv-files)
+    - [Working with Parquet Files](#working-with-parquet-files)
     - [Common Operations](#common-operations)
       - [Analyzing Data](#analyzing-data)
       - [Combining DataFrames](#combining-dataframes)
@@ -31,11 +32,8 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
 This project is currently under active development. Do expect bugs, missing features and API changes.
 
 Current development focus:
-- [ ] Read Parquet files
 - [ ] Better DataFrame functionality
 - [ ] More examples
-- [ ] Improve error handling
-- [ ] Add comprehensive unit tests
 
 Last tested with:
 - FreePascal 3.2.2
@@ -169,6 +167,48 @@ begin
   end;
 end;
 ```
+
+### Working with Parquet Files
+
+Create a DataFrame from Parquet files:
+
+```pascal
+var
+  Frame: TDuckFrame;
+begin
+  // Load single Parquet file
+  Frame := TDuckFrame.CreateFromParquet('data.parquet');
+  try
+    Frame.Print;  // Display the data
+  finally
+    Frame.Free;
+  end;
+end;
+```
+
+Load multiple Parquet files as a single DataFrame:
+
+```pascal
+var
+  Frame: TDuckFrame;
+  Files: array of string;
+begin
+  SetLength(Files, 3);
+  Files[0] := 'data1.parquet';
+  Files[1] := 'data2.parquet';
+  Files[2] := 'data3.parquet';
+  
+  // Load multiple files
+  Frame := TDuckFrame.CreateFromParquet(Files);
+  try
+    WriteLn('Total rows: ', Frame.RowCount);
+    Frame.Print;
+  finally
+    Frame.Free;
+  end;
+end;
+```
+
 
 ### Common Operations
 
