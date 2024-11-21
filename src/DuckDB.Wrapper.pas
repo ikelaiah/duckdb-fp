@@ -5,13 +5,13 @@ unit DuckDB.Wrapper;
 interface
 
 uses
-  SysUtils, Classes, libduckdb, DuckDB.DataFrame, Math, Variants;
+  // Only need DuckDB.Base for interfaces
+  SysUtils, Classes, libduckdb, DuckDB.Base, Math, Variants;
 
 type
-  EDuckDBError = class(Exception);
 
   { TDuckDBConnection }
-  TDuckDBConnection = class
+  TDuckDBConnection = class(TInterfacedObject, IDuckDBConnection)
   private
     FDatabase: p_duckdb_database;
     FConnection: p_duckdb_connection;
@@ -34,7 +34,7 @@ type
     
     // Query execution
     procedure ExecuteSQL(const ASQL: string);
-    function Query(const ASQL: string): TDuckFrame;
+    function Query(const ASQL: string): IDuckFrame;
     function QueryValue(const ASQL: string): Variant;
     
     // Transaction management
@@ -42,8 +42,8 @@ type
     procedure Commit;
     procedure Rollback;
     
-    class function ReadCSV(const FileName: string): TDuckFrame;
-    procedure WriteToTable(const DataFrame: TDuckFrame; const TableName: string; 
+    function ReadCSV(const FileName: string): TDuckFrame;
+    procedure WriteToTable(const DataFrame: IDuckFrame; const TableName: string; 
       const SchemaName: string = 'main');
   end;
 
@@ -51,6 +51,16 @@ type
 function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
 
 implementation
+
+uses
+  { 
+    - DuckDB.Wrapper needs DuckDB.DataFrame in implementation 
+      to create TDuckFrame instances
+    - DuckDB.DataFrame does NOT need DuckDB.Wrapper in implementation 
+      because it uses TDuckDBConnection through its interface 
+      IDuckDBConnection
+  }
+  DuckDB.DataFrame;  // Only needed in implementation
 
 // Helper function for boolean to string conversion
 function BoolToString(const Value: Boolean): string;

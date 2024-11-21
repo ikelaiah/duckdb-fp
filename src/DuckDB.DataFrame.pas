@@ -5,130 +5,21 @@ unit DuckDB.DataFrame;
 interface
 
 uses
-  SysUtils, Classes, Variants, libduckdb, Math, TypInfo, Generics.Collections, DateUtils;
+  // Only need DuckDB.Base for interfaces (IDuckDBConnection, IDuckFrame) 
+  // No need for DuckDB.Wrapper since we only use it through interfaces
+  SysUtils, Classes, Variants, Math, TypInfo, Generics.Collections, DateUtils, DuckDB.Base;
 
 type
-  EDuckDBError = class(Exception);
-
-  {
-  Union modes
-
-  1. umStrict - Most conservative mode
-    - Requires exact match of column names and types
-    - Ensures data consistency
-    - Best for when you know both DataFrames should have identical structure
-    - Similar to SQL's UNION with strict type checking
-  2. umCommon - Intersection mode
-    - Only includes columns that exist in both DataFrames
-    - Flexible when DataFrames have different structures but share some columns
-    - Similar to SQL's NATURAL JOIN behavior
-    - Good for when you want to safely combine DataFrames with different schemas
-  3. umAll - Most inclusive mode
-    - Includes all columns from both DataFrames
-    - Missing values are filled with NULL
-    - Most flexible but might need careful handling of NULL values
-    - Similar to SQL's FULL OUTER JOIN concept
-    - Useful when you want to preserve all data from both frames
-  }
-  TUnionMode = (
-    umStrict,    // Strict mode: columns must match exactly
-    umCommon,    // Common columns: only include columns that appear in both frames
-    umAll        // All columns: include all columns from both frames
-  );
-
-  { Column types that map to DuckDB's native types }
-  TDuckDBColumnType = (
-    dctUnknown,    // Unknown or unsupported type
-    dctBoolean,    // Boolean (true/false)
-    dctTinyInt,    // 8-bit integer
-    dctSmallInt,   // 16-bit integer
-    dctInteger,    // 32-bit integer
-    dctBigInt,     // 64-bit integer
-    dctFloat,      // Single-precision floating point
-    dctDouble,     // Double-precision floating point
-    dctDate,       // Date without time (YYYY-MM-DD)
-    dctTime,       // Time without date (HH:MM:SS.SSS)
-    dctTimestamp,  // Date with time (YYYY-MM-DD HH:MM:SS.SSS)
-    dctInterval,   // Time interval/duration
-    dctString,     // Variable-length string
-    dctBlob,       // Binary large object
-    dctDecimal,    // Decimal number with precision and scale
-    dctUUID,       // Universally Unique Identifier
-    dctJSON        // JSON data
-  );
-
-  { TDuckDBColumn represents a single column in a DuckDB DataFrame }
-  TDuckDBColumn = record
-    Name: string;           // Column name from query or user definition
-    DataType: TDuckDBColumnType;  // Column's data type (Integer, Double, etc.)
-    Data: array of Variant; // Raw column data stored as Variants for flexibility
-    
-    { Helper functions to return strongly-typed arrays }
-    
-    { Converts the column data to an array of Double values.
-      Null values are converted to 0. }
-    function AsDoubleArray: specialize TArray<Double>;
-    
-    { Converts the column data to an array of Integer values.
-      Null values are converted to 0. }
-    function AsIntegerArray: specialize TArray<Integer>;
-
-    { Converts the column data to an array of Int64 values.
-      Null values are converted to 0. }
-    function AsIntegerArray: specialize TArray<Int64>;
-    
-    { Converts the column data to an array of string values.
-      Null values are converted to empty strings. }
-    function AsStringArray: specialize TArray<string>;
-    
-    { Converts the column data to an array of Boolean values.
-      Null values are converted to False. }
-    function AsBooleanArray: specialize TArray<Boolean>;
-
-    { Converts column data to array of TDate values.
-      Null values are converted to 0 (which is 30/12/1899 in TDate). }
-    function AsDateArray: specialize TArray<TDate>;
-    
-    { Converts column data to array of TTime values.
-      Null values are converted to 0 (which is 00:00:00). }
-    function AsTimeArray: specialize TArray<TTime>;
-
-    { Converts column data to array of TDateTime values.
-    Null values are converted to 0 (which is 30/12/1899 in TDateTime). }
-    function AsDateTimeArray: specialize TArray<TDateTime>;
-  end;
-
-  { Statistical measures for numeric columns }
-  TColumnStats = record
-    Count: Integer;         // Total number of rows
-    Mean: Double;           // Average value
-    StdDev: Double;         // Standard deviation
-    Skewness: Double;       // Measure of distribution asymmetry (0 is symmetric)
-    Kurtosis: Double;       // Measure of "tailedness" compared to normal distribution
-    NonMissingRate: Double; // Percentage of non-null values (1.0 = no nulls)
-    Min: Variant;           // Minimum value
-    Q1: Double;             // First quartile (25th percentile)
-    Median: Double;         // Median (50th percentile)
-    Q3: Double;             // Third quartile (75th percentile)
-    Max: Variant;           // Maximum value
-    NullCount: Integer;     // Number of null values
-    Ordered: Boolean;       // Is the data ordered?
-    NUnique: Integer;       // Number of unique values
-    TopCounts: string;      // Most frequent values and their counts
-  end;
-
-  TStringArray = array of string;  // Add this type declaration at the unit level
-
   { DataFrame class for handling query results in DuckDB compatible datatype}
-  TDuckFrame = class
+  TDuckFrame = class(TInterfacedObject, IDuckFrame)
   private
     FColumns: array of TDuckDBColumn;  // Array of columns
     FRowCount: Integer;                // Number of rows in the DataFrame
     
     { Core: Union-related helper functions for combining dataframes }
-    function GetCommonColumns(const Other: TDuckFrame): TStringArray;
-    function GetAllColumns(const Other: TDuckFrame): TStringArray;
-    function HasSameStructure(const Other: TDuckFrame): Boolean;
+    function GetCommonColumns(const Other: IDuckFrame): TStringArray;
+    function GetAllColumns(const Other: IDuckFrame): TStringArray;
+    function HasSameStructure(const Other: IDuckFrame): Boolean;
 
     { Stats: Type mapping and statistical calculations }
     function MapDuckDBType(duckdb_type: duckdb_type): TDuckDBColumnType;
@@ -147,12 +38,12 @@ type
     { Core: Column-related helper functions for data access and calculations }
     function GetColumnCount: Integer;
     function GetColumnNames: TStringArray;
-    function GetColumn(Index: Integer): TDuckDBColumn;
-    function GetColumnByName(const Name: string): TDuckDBColumn;
+    function GetColumn(Index: Integer): IDuckDBColumn;
+    function GetColumnByName(const Name: string): IDuckDBColumn;
     function GetValue(Row, Col: Integer): Variant;
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
-    function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
+    function Select(const ColumnNames: array of string): IDuckFrame;  // Select columns
 
     { Core: DataFrame operations }
     procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
@@ -163,16 +54,16 @@ type
     function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
     
     { Core: Union operations }
-    function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-    function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-    function Distinct: TDuckFrame;
+    function Union(const Other: IDuckFrame; Mode: TUnionMode = umStrict): IDuckFrame;
+    function UnionAll(const Other: IDuckFrame; Mode: TUnionMode = umStrict): IDuckFrame;
+    function Distinct: IDuckFrame;
 
     { IO: File-related operations }
     procedure SaveToCSV(const FileName: string);       // Export to CSV file
 
     { Data Preview: Methods for inspecting data samples }
-    function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
-    function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
+    function Head(Count: Integer = 5): IDuckFrame;     // Get first N rows
+    function Tail(Count: Integer = 5): IDuckFrame;     // Get last N rows
 
     { Data Analysis: Helper functions }
     function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
@@ -180,17 +71,17 @@ type
 
     { Data Analysis: Methods for examining data structure and statistics }
     procedure Describe;                                // Show statistical summary
-    function NullCount: TDuckFrame;                    // Count null values per column
+    function NullCount: IDuckFrame;                    // Count null values per column
     procedure Info; 
     
     { Data Cleaning: Methods for handling missing data }
-    function DropNA: TDuckFrame;                        // Remove rows with any null values
-    function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
+    function DropNA: IDuckFrame;                        // Remove rows with any null values
+    function FillNA(const Value: Variant): IDuckFrame;  // Fill null values
     
     { Stats: Advanced analysis methods }
-    function CorrPearson: TDuckFrame;
-    function CorrSpearman: TDuckFrame;
-    function UniqueCounts(const ColumnName: string): TDuckFrame; // Frequency of each unique value
+    function CorrPearson: IDuckFrame;
+    function CorrSpearman: IDuckFrame;
+    function UniqueCounts(const ColumnName: string): IDuckFrame; // Frequency of each unique value
     
     { Plot: ASCII plotting capabilities }
     procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
@@ -460,7 +351,7 @@ begin
   FRowCount := 0;
 end;
 
-function TDuckFrame.Tail(Count: Integer = 5): TDuckFrame;
+function TDuckFrame.Tail(Count: Integer = 5): IDuckFrame;
 var
   Col, Row, StartRow: Integer;
   RowsToCopy: Integer;
@@ -494,7 +385,7 @@ begin
   end;
 end;
 
-function TDuckFrame.Select(const ColumnNames: array of string): TDuckFrame;
+function TDuckFrame.Select(const ColumnNames: array of string): IDuckFrame;
 var
   I, Col, NewCol: Integer;
   ColIndex: Integer;
@@ -822,7 +713,7 @@ begin
   end;
 end;
 
-function TDuckFrame.Head(Count: Integer = 5): TDuckFrame;
+function TDuckFrame.Head(Count: Integer = 5): IDuckFrame;
 var
   Col, Row: Integer;
   RowsToCopy: Integer;
@@ -1220,7 +1111,7 @@ begin
 end;
 end;
 
-function TDuckFrame.NullCount: TDuckFrame;
+function TDuckFrame.NullCount: IDuckFrame
 var
   Col: Integer;
   Row: Integer;
@@ -1359,7 +1250,7 @@ begin
 end;
 
 // Correlation matrix
-function TDuckFrame.CorrPearson: TDuckFrame;
+function TDuckFrame.CorrPearson: IDuckFrame
 var
   NumericCols: array of Integer;
   I, J, K: Integer;
@@ -1568,7 +1459,7 @@ begin
 end;
 
 // Missing data handling
-function TDuckFrame.DropNA: TDuckFrame;  // Remove rows with any null values
+function TDuckFrame.DropNA: IDuckFrame  // Remove rows with any null values
 var
   Col, Row: Integer;
   KeepRow: array of Boolean;
@@ -1626,7 +1517,7 @@ begin
   end;
 end;
 
-function TDuckFrame.FillNA(const Value: Variant): TDuckFrame;  // Fill null values
+function TDuckFrame.FillNA(const Value: Variant): IDuckFrame;  // Fill null values
 var
   Col, Row: Integer;
 begin
@@ -1658,7 +1549,7 @@ begin
 end;
 
 // Unique counts (frequency of each unique value)
-function TDuckFrame.UniqueCounts(const ColumnName: string): TDuckFrame;
+function TDuckFrame.UniqueCounts(const ColumnName: string): IDuckFrame;
 var
   Col: TDuckDBColumn;
   FreqMap: specialize TDictionary<string, Integer>;
@@ -1714,7 +1605,7 @@ begin
 end;
 
 // Add this new function to calculate Spearman correlation
-function TDuckFrame.CorrSpearman: TDuckFrame;
+function TDuckFrame.CorrSpearman: IDuckFrame
 var
   NumericCols: array of Integer;
   I, J, K, L: Integer;
@@ -1931,7 +1822,7 @@ begin
   end;
 end;
 
-function TDuckFrame.GetCommonColumns(const Other: TDuckFrame): TStringArray;
+function TDuckFrame.GetCommonColumns(const Other: IDuckFrame): TStringArray;
 var
   CommonColumns: TStringArray;
   I: Integer;
@@ -1948,7 +1839,7 @@ begin
   Result := CommonColumns;
 end;
 
-function TDuckFrame.GetAllColumns(const Other: TDuckFrame): TStringArray;
+function TDuckFrame.GetAllColumns(const Other: IDuckFrame): TStringArray;
 var
   AllColumns: TStringArray;
   UniqueColumns: specialize THashSet<string>;
@@ -1989,7 +1880,7 @@ begin
   end;
 end;
 
-function TDuckFrame.Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+function TDuckFrame.Union(const Other: IDuckFrame; Mode: TUnionMode = umStrict): IDuckFrame;
 begin
   // First combine all rows
   Result := UnionAll(Other, Mode);
@@ -1997,7 +1888,7 @@ begin
   Result := Result.Distinct;
 end;
 
-function TDuckFrame.UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+function TDuckFrame.UnionAll(const Other: IDuckFrame; Mode: TUnionMode = umStrict): IDuckFrame;
 var
   Row, Col, DestCol: Integer;
   SelectedColumns: TStringArray;
@@ -2077,7 +1968,7 @@ begin
   end;
 end;
 
-function TDuckFrame.HasSameStructure(const Other: TDuckFrame): Boolean;
+function TDuckFrame.HasSameStructure(const Other: IDuckFrame): Boolean;
 var
   I: Integer;
 begin
@@ -2104,7 +1995,7 @@ begin
     Result[I] := FColumns[I].Name;
 end;
 
-function TDuckFrame.Distinct: TDuckFrame;
+function TDuckFrame.Distinct: IDuckFrame
 var
   Row, Col, ResultRow: Integer;
   UniqueRows: specialize THashSet<string>;
@@ -2204,18 +2095,11 @@ constructor TDuckFrame.CreateFromCSV(const AFileName: string;
                                    const AHasHeaders: Boolean = True;
                                    const ADelimiter: Char = ',');
 var
-  DB: p_duckdb_database;
-  Conn: p_duckdb_connection;
-  Result: duckdb_result;
-  State: duckdb_state;
-  SQLQuery: string;
+  DB: TDuckDBConnection;
   Options: string;
 begin
   inherited Create;
   
-  if not FileExists(AFileName) then
-    raise EDuckDBError.CreateFmt('File not found: %s', [AFileName]);
-
   // Build options string
   Options := '';
   if not AHasHeaders then
@@ -2223,46 +2107,13 @@ begin
   if ADelimiter <> ',' then
     Options := Options + Format(', delim=''%s''', [ADelimiter]);
 
+  DB := TDuckDBConnection.Create;
   try
-    // Open an in-memory database
-    State := duckdb_open(nil, @DB);
-    if State = DuckDBError then
-      raise EDuckDBError.Create('Failed to create in-memory database');
-
-    try
-      // Create a connection
-      State := duckdb_connect(DB, @Conn);
-      if State = DuckDBError then
-        raise EDuckDBError.Create('Failed to create connection');
-
-      try
-        // Create query with proper escaping
-        SQLQuery := Format('SELECT * FROM read_csv_auto(''%s''%s)',
-          [StringReplace(AFileName, '''', '''''', [rfReplaceAll]), Options]);
-
-        // Execute query
-        State := duckdb_query(Conn, PAnsiChar(AnsiString(SQLQuery)), @Result);
-        if State = DuckDBError then
-          raise EDuckDBError.Create('Failed to read CSV file');
-
-        try
-          // Load the result into our frame
-          LoadFromResult(@Result);
-        finally
-          duckdb_destroy_result(@Result);
-        end;
-
-      finally
-        duckdb_disconnect(@Conn);
-      end;
-
-    finally
-      duckdb_close(@DB);
-    end;
-
-  except
-    Clear;  // Clean up if something went wrong
-    raise;
+    DB.Open;  // in-memory database
+    LoadFromResult(DB.Query(Format('SELECT * FROM read_csv_auto(''%s''%s)',
+      [StringReplace(AFileName, '''', '''''', [rfReplaceAll]), Options])));
+  finally
+    DB.Free;
   end;
 end;
 
@@ -2393,69 +2244,26 @@ end;
 
 constructor TDuckFrame.CreateFromParquet(const AFileName: string);
 var
-  DB: p_duckdb_database;
-  Conn: p_duckdb_connection;
-  Result: duckdb_result;
-  State: duckdb_state;
-  SQLQuery: string;
+  DB: TDuckDBConnection;
 begin
   inherited Create;
   
   if not FileExists(AFileName) then
     raise EDuckDBError.Create('File not found: ' + AFileName);
 
+  DB := TDuckDBConnection.Create;
   try
-    // Open an in-memory database
-    State := duckdb_open(nil, @DB);
-    if State = DuckDBError then
-      raise EDuckDBError.Create('Failed to create in-memory database');
-
-    try
-      // Create a connection
-      State := duckdb_connect(DB, @Conn);
-      if State = DuckDBError then
-        raise EDuckDBError.Create('Failed to create connection');
-
-      try
-        // Create query with proper escaping
-        SQLQuery := Format('SELECT * FROM read_parquet(''%s'')',
-          [StringReplace(AFileName, '''', '''''', [rfReplaceAll])]);
-
-        // Execute query
-        State := duckdb_query(Conn, PAnsiChar(AnsiString(SQLQuery)), @Result);
-        if State = DuckDBError then
-          raise EDuckDBError.Create('Failed to read Parquet file');
-
-        try
-          LoadFromResult(@Result);
-        finally
-          duckdb_destroy_result(@Result);
-        end;
-
-      finally
-        duckdb_disconnect(@Conn);
-      end;
-
-    finally
-      duckdb_close(@DB);
-    end;
-
-  except
-    on E: Exception do
-    begin
-      Free;
-      raise;
-    end;
+    DB.Open;  // in-memory database
+    LoadFromResult(DB.Query(Format('SELECT * FROM read_parquet(''%s'')',
+      [StringReplace(AFileName, '''', '''''', [rfReplaceAll])])));
+  finally
+    DB.Free;
   end;
 end;
 
 constructor TDuckFrame.CreateFromParquet(const Files: array of string);
 var
-  DB: p_duckdb_database;
-  Conn: p_duckdb_connection;
-  Result: duckdb_result;
-  State: duckdb_state;
-  SQLQuery: string;
+  DB: TDuckDBConnection;
   FileList: string;
   I: Integer;
 begin
@@ -2464,59 +2272,23 @@ begin
   if Length(Files) = 0 then
     raise EDuckDBError.Create('No files specified for Parquet reading');
 
+  // Build file list string
+  FileList := '[';
+  for I := 0 to High(Files) do
+  begin
+    if I > 0 then
+      FileList := FileList + ', ';
+    FileList := FileList + Format('''%s''',
+      [StringReplace(Files[I], '''', '''''', [rfReplaceAll])]);
+  end;
+  FileList := FileList + ']';
+
+  DB := TDuckDBConnection.Create;
   try
-    // Open an in-memory database
-    State := duckdb_open(nil, @DB);
-    if State = DuckDBError then
-      raise EDuckDBError.Create('Failed to create in-memory database');
-
-    try
-      // Create a connection
-      State := duckdb_connect(DB, @Conn);
-      if State = DuckDBError then
-        raise EDuckDBError.Create('Failed to create connection');
-
-      try
-        // Build file list string
-        FileList := '[';
-        for I := 0 to High(Files) do
-        begin
-          if I > 0 then
-            FileList := FileList + ', ';
-          FileList := FileList + Format('''%s''',
-            [StringReplace(Files[I], '''', '''''', [rfReplaceAll])]);
-        end;
-        FileList := FileList + ']';
-
-        // Create query
-        SQLQuery := Format('SELECT * FROM read_parquet(%s)', [FileList]);
-
-        // Execute query
-        State := duckdb_query(Conn, PAnsiChar(AnsiString(SQLQuery)), @Result);
-        if State = DuckDBError then
-          raise EDuckDBError.Create('Failed to read Parquet files');
-
-        try
-          // Load the result into our frame
-          LoadFromResult(@Result);
-        finally
-          duckdb_destroy_result(@Result);
-        end;
-
-      finally
-        duckdb_disconnect(@Conn);
-      end;
-
-    finally
-      duckdb_close(@DB);
-    end;
-
-  except
-    on E: Exception do
-    begin
-      Free;  // Clean up if constructor fails
-      raise;
-    end;
+    DB.Open;  // in-memory database
+    LoadFromResult(DB.Query(Format('SELECT * FROM read_parquet(%s)', [FileList])));
+  finally
+    DB.Free;
   end;
 end;
 
