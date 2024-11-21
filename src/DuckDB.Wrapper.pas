@@ -1,6 +1,7 @@
 unit DuckDB.Wrapper;
 
 {$mode objfpc}{$H+}{$J-}
+{$modeswitch advancedrecords}
 
 interface
 
@@ -145,7 +146,7 @@ begin
   FIsConnected := False;
 end;
 
-function TDuckDBConnection.Clone: TDuckDBConnection;
+function TDuckDBConnection.Clone: IDuckDBConnection;
 var
   State: duckdb_state;
 begin

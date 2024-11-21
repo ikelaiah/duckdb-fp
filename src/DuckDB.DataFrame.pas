@@ -7,9 +7,11 @@ interface
 uses
   // Only need DuckDB.Base for interfaces (IDuckDBConnection, IDuckFrame) 
   // No need for DuckDB.Wrapper since we only use it through interfaces
-  SysUtils, Classes, Variants, Math, TypInfo, Generics.Collections, DateUtils, DuckDB.Base;
+  SysUtils, Classes, Variants, Math, TypInfo, Generics.Collections, DateUtils, DuckDB.Base, libduckdb;
 
 type
+
+
   { DataFrame class for handling query results in DuckDB compatible datatype}
   TDuckFrame = class(TInterfacedObject, IDuckFrame)
   private
@@ -38,8 +40,8 @@ type
     { Core: Column-related helper functions for data access and calculations }
     function GetColumnCount: Integer;
     function GetColumnNames: TStringArray;
-    function GetColumn(Index: Integer): IDuckDBColumn;
-    function GetColumnByName(const Name: string): IDuckDBColumn;
+    function GetColumn(Index: Integer): TDuckDBColumn;
+    function GetColumnByName(const Name: string): TDuckDBColumn;
     function GetValue(Row, Col: Integer): Variant;
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
@@ -110,6 +112,10 @@ type
     procedure SetValue(const ARow: Integer; const AColumnName: string; 
                        const AValue: Variant);
 
+    function Filter(const Condition: string): IDuckFrame;
+    function Sort(const ColNames: array of string): IDuckFrame;
+    function Where(const Condition: string): IDuckFrame;
+
   end;
 
 { Helper function for sorting }
@@ -124,156 +130,7 @@ function StringToDuckDBType(const TypeName: string): TDuckDBColumnType;
 
 implementation
 
-{ TDuckDBColumn helper functions }
 
-{ Converts column data to array of Double values }
-function TDuckDBColumn.AsDoubleArray: specialize TArray<Double>;
-var
-  i: Int64;
-begin
-  // Create result array with same length as data
-  SetLength(Result, Length(Data));
-  
-  // Convert each element
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := 0  // Convert NULL to 0 (could use NaN instead)
-    else
-      Result[i] := Double(Data[i]);  // Convert Variant to Double
-  end;
-end;
-
-{ Converts column data to array of Integer values }
-function TDuckDBColumn.AsIntegerArray: specialize TArray<Integer>;
-var
-  i: Int64;
-begin
-  // Create result array with same length as data
-  SetLength(Result, Length(Data));
-  
-  // Convert each element
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := 0  // Convert NULL to 0
-    else
-      Result[i] := Integer(Data[i]);  // Convert Variant to Integer
-  end;
-end;
-
-{ Converts column data to array of Integer values }
-function TDuckDBColumn.AsIntegerArray: specialize TArray<Int64>;
-var
-  i: Int64;
-begin
-  // Create result array with same length as data
-  SetLength(Result, Length(Data));
-
-  // Convert each element
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := 0  // Convert NULL to 0
-    else
-      Result[i] := Int64(Data[i]);  // Convert Variant to Int64
-  end;
-end;
-
-{ Converts column data to array of string values }
-function TDuckDBColumn.AsStringArray: specialize TArray<string>;
-var
-  i: Int64;
-begin
-  // Create result array with same length as data
-  SetLength(Result, Length(Data));
-  
-  // Convert each element
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := ''  // Convert NULL to empty string
-    else
-      Result[i] := VarToStr(Data[i]);  // Convert Variant to string using VarToStr
-  end;
-end;
-
-{ Converts column data to array of Boolean values }
-function TDuckDBColumn.AsBooleanArray: specialize TArray<Boolean>;
-var
-  i: Int64;
-begin
-  // Create result array with same length as data
-  SetLength(Result, Length(Data));
-  
-  // Convert each element
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := False  // Convert NULL to False
-    else
-      Result[i] := Boolean(Data[i]);  // Convert Variant to Boolean
-  end;
-end;
-
-function TDuckDBColumn.AsDateArray: specialize TArray<TDate>;
-var
-  i: Integer;
-  TempDateTime: TDateTime;
-begin
-  SetLength(Result, Length(Data));
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := 0  // Default date (30/12/1899)
-    else if VarIsType(Data[i], varDate) then
-      Result[i] := VarToDateTime(Data[i])  // Keep the raw date value
-    else if TryStrToDateTime(VarToStr(Data[i]), TempDateTime) then
-      Result[i] := Int(TempDateTime)
-    else
-      Result[i] := TDate(VarToDateTime(Data[i]));  // Use the raw value directly
-  end;
-end;
-
-{ Converts column data to array of TTime values 
-  Null values are converted to 0 (which is 00:00:00). 
-  Note: In Pascal/Delphi, a TDateTime value stores the date in the 
-        integer portion and the time in the fractional portion, so 
-        Frac() is also a correct way to extract just the time component. }
-function TDuckDBColumn.AsTimeArray: specialize TArray<TTime>;
-var
-  i: Integer;
-  TempDateTime: TDateTime;
-begin
-  SetLength(Result, Length(Data));
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := 0
-    else if VarIsType(Data[i], varDate) then
-      Result[i] := VarToDateTime(Data[i])  // Keep the raw time value
-    else if TryStrToTime(VarToStr(Data[i]), TempDateTime) then
-      Result[i] := TempDateTime
-    else
-      Result[i] := TTime(VarToDateTime(Data[i]));  // Use the raw value directly
-  end;
-end;
-
-function TDuckDBColumn.AsDateTimeArray: specialize TArray<TDateTime>;
-var
-  i: Integer;
-begin
-  SetLength(Result, Length(Data));
-  for i := 0 to High(Data) do
-  begin
-    if VarIsNull(Data[i]) then
-      Result[i] := 0  // Default date/time (30/12/1899 00:00:00)
-    else if VarIsType(Data[i], varDate) then
-      Result[i] := VarToDateTime(Data[i])
-    else
-      Result[i] := StrToDateTime(VarToStr(Data[i]));
-  end;
-end;
 
 { TDuckFrame }
 
@@ -2290,6 +2147,73 @@ begin
   finally
     DB.Free;
   end;
+end;
+
+function TDuckFrame.Filter(const Condition: string): IDuckFrame;
+var
+  DB: IDuckDBConnection;
+  TempTableName: string;
+begin
+  DB := TDuckDBConnection.Create;
+  try
+    DB.Open;
+    
+    // Create a unique temporary table name
+    TempTableName := Format('temp_filter_%d', [Random(100000)]);
+    
+    // Write current data to temp table
+    DB.WriteToTable(Self, TempTableName);
+    
+    try
+      // Execute filter using SQL WHERE clause
+      Result := DB.Query(Format('SELECT * FROM %s WHERE %s', 
+        [TempTableName, Condition]));
+    finally
+      // Clean up temp table
+      DB.ExecuteSQL(Format('DROP TABLE IF EXISTS %s', [TempTableName]));
+    end;
+  finally
+    // Connection will be automatically freed due to interface
+  end;
+end;
+
+function TDuckFrame.Sort(const ColNames: array of string): IDuckFrame;
+var
+  DB: IDuckDBConnection;
+  TempTableName: string;
+  OrderByClause: string;
+  I: Integer;
+begin
+  if Length(ColNames) = 0 then
+    raise EDuckDBError.Create('No columns specified for sorting');
+
+  DB := TDuckDBConnection.Create;
+  try
+    DB.Open;
+    
+    TempTableName := Format('temp_sort_%d', [Random(100000)]);
+    DB.WriteToTable(Self, TempTableName);
+    
+    // Build ORDER BY clause
+    OrderByClause := ColNames[0];
+    for I := 1 to High(ColNames) do
+      OrderByClause := OrderByClause + ', ' + ColNames[I];
+    
+    try
+      Result := DB.Query(Format('SELECT * FROM %s ORDER BY %s', 
+        [TempTableName, OrderByClause]));
+    finally
+      DB.ExecuteSQL(Format('DROP TABLE IF EXISTS %s', [TempTableName]));
+    end;
+  finally
+    // Connection will be automatically freed
+  end;
+end;
+
+function TDuckFrame.Where(const Condition: string): IDuckFrame;
+begin
+  // Where is just an alias for Filter
+  Result := Filter(Condition);
 end;
 
 end. 

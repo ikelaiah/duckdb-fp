@@ -1,6 +1,7 @@
 unit DuckDB.Base;
 
 {$mode objfpc}{$H+}{$J-}
+{$modeswitch advancedrecords}
 
 interface   
 
@@ -12,44 +13,8 @@ type
 
   TStringArray = array of string; 
 
-  // Forward declarations
-  IDuckDBConnection = interface;
-  IDuckFrame = interface;
-
- // Interface for DuckDB connection operations
-  IDuckDBConnection = interface
-    ['{4A8C9560-123A-4BCD-9EF0-A12B3C4D5E6F}']
-    // Connection management
-    procedure Open(const ADatabasePath: string = '');
-    procedure Close;
-    function Clone: TDuckDBConnection;
-    property IsConnected: Boolean read FIsConnected;
-    property DatabasePath: string read FDatabasePath;
-    
-    // Query execution
-    procedure ExecuteSQL(const ASQL: string);
-    function Query(const ASQL: string): IDuckFrame;
-    function QueryValue(const ASQL: string): Variant;
-    
-    // Transaction management
-    procedure BeginTransaction;
-    procedure Commit;
-    procedure Rollback;
-    
-    function ReadCSV(const FileName: string): IDuckFrame;
-    procedure WriteToTable(const DataFrame: IDuckFrame; const TableName: string; 
-      const SchemaName: string = 'main');
-  end;
-
-  // Interface for DataFrame operations
-  IDuckFrame = interface
-    ['{F1B2C3D4-E5F6-47A8-B9C0-D1E2F3A4B5C6}']
-    function Filter(const Condition: string): IDuckFrame;
-    function Sort(const Columns: array of string): IDuckFrame;
-    function Where(const Condition: string): IDuckFrame;
-    // ... other DataFrame-related methods
-  end;
-
+  
+  pduckdb_result = ^duckdb_result;
 
   {
   Union modes
@@ -97,6 +62,7 @@ type
     dctUUID,       // Universally Unique Identifier
     dctJSON        // JSON data
   );
+
 
   { TDuckDBColumn represents a single column in a DuckDB DataFrame }
   TDuckDBColumn = record
@@ -158,6 +124,254 @@ type
     TopCounts: string;      // Most frequent values and their counts
   end;
 
+  // Forward declarations
+  IDuckDBConnection = interface;
+  IDuckFrame = interface;
+
+ // Interface for DuckDB connection operations
+  IDuckDBConnection = interface
+    ['{4A8C9560-123A-4BCD-9EF0-A12B3C4D5E6F}']
+    // Connection management
+    procedure Open(const ADatabasePath: string = '');
+    procedure Close;
+    function Clone: IDuckDBConnection;
+    
+    // Query execution
+    procedure ExecuteSQL(const ASQL: string);
+    function Query(const ASQL: string): IDuckFrame;
+    function QueryValue(const ASQL: string): Variant;
+    
+    // Transaction management
+    procedure BeginTransaction;
+    procedure Commit;
+    procedure Rollback;
+    
+    function ReadCSV(const FileName: string): IDuckFrame;
+    procedure WriteToTable(const DataFrame: IDuckFrame; const TableName: string; 
+      const SchemaName: string = 'main');
+    // ... other TDuckDBConnection-related methods
+  end;
+
+  // Interface for DataFrame operations
+  IDuckFrame = interface
+    ['{F1B2C3D4-E5F6-47A8-B9C0-D1E2F3A4B5C6}']
+    
+    { Core: Column-related helper functions for data access and calculations }
+    function GetColumnCount: Integer;
+    function GetColumnNames: TStringArray;
+    function GetColumn(Index: Integer): TDuckDBColumn;
+    function GetColumnByName(const Name: string): TDuckDBColumn;
+    function GetValue(Row, Col: Integer): Variant;
+    function GetValueByName(Row: Integer; const ColName: string): Variant;
+    function FindColumnIndex(const Name: string): Integer;
+    function Select(const ColumnNames: array of string): IDuckFrame;  // Select columns
+
+    { Core: DataFrame operations }
+    procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
+    procedure Clear;                                    // Clear all data
+    procedure Print(MaxRows: Integer = 10);             // Print DataFrame contents
+    
+    { Core: Value conversion helper }
+    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
+    
+    { Core: Union operations }
+    function Union(const Other: IDuckFrame; Mode: TUnionMode = umStrict): IDuckFrame;
+    function UnionAll(const Other: IDuckFrame; Mode: TUnionMode = umStrict): IDuckFrame;
+    function Distinct: IDuckFrame;
+
+    { IO: File-related operations }
+    procedure SaveToCSV(const FileName: string);       // Export to CSV file
+
+    { Data Preview: Methods for inspecting data samples }
+    function Head(Count: Integer = 5): IDuckFrame;     // Get first N rows
+    function Tail(Count: Integer = 5): IDuckFrame;     // Get last N rows
+
+    { Data Analysis: Helper functions }
+    function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
+    function CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
+
+    { Data Analysis: Methods for examining data structure and statistics }
+    procedure Describe;                                // Show statistical summary
+    function NullCount: IDuckFrame;                    // Count null values per column
+    procedure Info; 
+    
+    { Data Cleaning: Methods for handling missing data }
+    function DropNA: IDuckFrame;                        // Remove rows with any null values
+    function FillNA(const Value: Variant): IDuckFrame;  // Fill null values
+    
+    { Stats: Advanced analysis methods }
+    function CorrPearson: IDuckFrame;
+    function CorrSpearman: IDuckFrame;
+    function UniqueCounts(const ColumnName: string): IDuckFrame; // Frequency of each unique value
+    
+    { Plot: ASCII plotting capabilities }
+    procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
+                            
+    { Methods for manual construction }
+    procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
+    procedure AddRow(const AValues: array of Variant);
+    procedure SetValue(const ARow: Integer; const AColumnName: string; 
+                       const AValue: Variant);
+
+    function Filter(const Condition: string): IDuckFrame;
+    function Sort(const Columns: array of string): IDuckFrame;
+    function Where(const Condition: string): IDuckFrame;
+    // ... other DataFrame-related methods
+  end;
+
+
+
   implementation
+
+{ TDuckDBColumn helper functions }
+
+{ Converts column data to array of Double values }
+function TDuckDBColumn.AsDoubleArray: specialize TArray<Double>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Convert NULL to 0 (could use NaN instead)
+    else
+      Result[i] := Double(Data[i]);  // Convert Variant to Double
+  end;
+end;
+
+{ Converts column data to array of Integer values }
+function TDuckDBColumn.AsIntegerArray: specialize TArray<Integer>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Convert NULL to 0
+    else
+      Result[i] := Integer(Data[i]);  // Convert Variant to Integer
+  end;
+end;
+
+{ Converts column data to array of Integer values }
+function TDuckDBColumn.AsIntegerArray: specialize TArray<Int64>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Convert NULL to 0
+    else
+      Result[i] := Int64(Data[i]);  // Convert Variant to Int64
+  end;
+end;
+
+{ Converts column data to array of string values }
+function TDuckDBColumn.AsStringArray: specialize TArray<string>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := ''  // Convert NULL to empty string
+    else
+      Result[i] := VarToStr(Data[i]);  // Convert Variant to string using VarToStr
+  end;
+end;
+
+{ Converts column data to array of Boolean values }
+function TDuckDBColumn.AsBooleanArray: specialize TArray<Boolean>;
+var
+  i: Int64;
+begin
+  // Create result array with same length as data
+  SetLength(Result, Length(Data));
+  
+  // Convert each element
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := False  // Convert NULL to False
+    else
+      Result[i] := Boolean(Data[i]);  // Convert Variant to Boolean
+  end;
+end;
+
+function TDuckDBColumn.AsDateArray: specialize TArray<TDate>;
+var
+  i: Integer;
+  TempDateTime: TDateTime;
+begin
+  SetLength(Result, Length(Data));
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Default date (30/12/1899)
+    else if VarIsType(Data[i], varDate) then
+      Result[i] := VarToDateTime(Data[i])  // Keep the raw date value
+    else if TryStrToDateTime(VarToStr(Data[i]), TempDateTime) then
+      Result[i] := Int(TempDateTime)
+    else
+      Result[i] := TDate(VarToDateTime(Data[i]));  // Use the raw value directly
+  end;
+end;
+
+{ Converts column data to array of TTime values 
+  Null values are converted to 0 (which is 00:00:00). 
+  Note: In Pascal/Delphi, a TDateTime value stores the date in the 
+        integer portion and the time in the fractional portion, so 
+        Frac() is also a correct way to extract just the time component. }
+function TDuckDBColumn.AsTimeArray: specialize TArray<TTime>;
+var
+  i: Integer;
+  TempDateTime: TDateTime;
+begin
+  SetLength(Result, Length(Data));
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0
+    else if VarIsType(Data[i], varDate) then
+      Result[i] := VarToDateTime(Data[i])  // Keep the raw time value
+    else if TryStrToTime(VarToStr(Data[i]), TempDateTime) then
+      Result[i] := TempDateTime
+    else
+      Result[i] := TTime(VarToDateTime(Data[i]));  // Use the raw value directly
+  end;
+end;
+
+function TDuckDBColumn.AsDateTimeArray: specialize TArray<TDateTime>;
+var
+  i: Integer;
+begin
+  SetLength(Result, Length(Data));
+  for i := 0 to High(Data) do
+  begin
+    if VarIsNull(Data[i]) then
+      Result[i] := 0  // Default date/time (30/12/1899 00:00:00)
+    else if VarIsType(Data[i], varDate) then
+      Result[i] := VarToDateTime(Data[i])
+    else
+      Result[i] := StrToDateTime(VarToStr(Data[i]));
+  end;
+end;
 
   end.
