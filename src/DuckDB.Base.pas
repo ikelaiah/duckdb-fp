@@ -164,7 +164,7 @@ type
     function GetValue(Row, Col: Integer): Variant;
     function GetValueByName(Row: Integer; const ColName: string): Variant;
     function FindColumnIndex(const Name: string): Integer;
-    function Select(const ColumnNames: array of string): IDuckFrame;  // Select columns
+    function Select(const ColumnNames: TStringArray): IDuckFrame;  // Select columns
 
     { Core: DataFrame operations }
     procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
@@ -210,7 +210,7 @@ type
     { Methods for manual construction }
     procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
     procedure AddRow(const AValues: array of Variant);
-    procedure SetValue(const ARow: Integer; const AColumnName: string; 
+    procedure SetValue(const ARow: Integer; const AColnName: string;
                        const AValue: Variant);
 
     function Filter(const Condition: string): IDuckFrame;
