@@ -502,7 +502,7 @@ var
 begin
   Result := TDuckFrame.Create;
   try
-    DB := TDuckDBConnection.Create as IDuckDBConnection;
+    DB := CreateDuckDBConnection;
     try
       DB.Open;
 

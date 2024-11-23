@@ -63,6 +63,11 @@ uses
   }
   DuckDB.DataFrame;  // Only needed in implementation
 
+function CreateDuckDBConnection: IDuckDBConnection;
+begin
+  Result := TDuckDBConnection.Create;
+end;
+
 // Helper function for boolean to string conversion
 function BoolToString(const Value: Boolean): string;
 begin

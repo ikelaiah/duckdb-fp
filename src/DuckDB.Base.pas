@@ -6,7 +6,7 @@ unit DuckDB.Base;
 interface   
 
 uses
-  SysUtils, Classes, Variants, Math, DateUtils, libduckdb;
+  SysUtils, Classes, Variants, DateUtils, libduckdb;
 
 type
   EDuckDBError = class(Exception);
@@ -135,6 +135,7 @@ type
     procedure Open(const ADatabasePath: string = '');
     procedure Close;
     function Clone: IDuckDBConnection;
+
     
     // Query execution
     procedure ExecuteSQL(const ASQL: string);
@@ -222,6 +223,10 @@ type
 
 
   implementation
+
+function CreateDuckDBConnection: IDuckDBConnection; forward;
+
+{ TDuckDBColumn helper functions }
 
 { TDuckDBColumn helper functions }
 
