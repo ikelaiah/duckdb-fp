@@ -187,6 +187,18 @@ type
     function DropNA: TDuckFrame;                        // Remove rows with any null values
     function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
     
+    { Data Manipulation: Methods for filtering and transforming data 
+      Added part of 0.1.0 }
+    function Filter(const ColumnName: string; const Value: Variant): TDuckFrame; overload;
+    function Filter(const ColumnName: string; const CompareOp: string; const Value: Variant): TDuckFrame; overload;
+    function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame; overload;
+    function Sort(const ColumnNames: array of string; const Ascending: array of Boolean): TDuckFrame; overload;
+    function GroupBy(const ColumnNames: array of string): TDuckFrame;
+    function Sample(Count: Integer): TDuckFrame; overload;
+    function Sample(Percentage: Double): TDuckFrame; overload;
+    function RenameColumn(const OldName, NewName: string): TDuckFrame;
+    function DropColumns(const ColumnNames: array of string): TDuckFrame;
+
     { Stats: Advanced analysis methods }
     function CorrPearson: TDuckFrame;
     function CorrSpearman: TDuckFrame;
@@ -223,7 +235,8 @@ type
 
 { Helper function for sorting }
 procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
-procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer);
+procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer; Ascending: Boolean = True);
+procedure QuickSortWithStrings(var Values: array of string; var Indices: array of Integer; Left, Right: Integer; Ascending: Boolean = True);
 
 { Converts a DuckDB column type to its SQL string representation }
 function DuckDBTypeToString(ColumnType: TDuckDBColumnType): string;
@@ -1317,11 +1330,139 @@ begin
   if Lo < iHi then QuickSort(A, Lo, iHi);
 end;
 
-// Add this helper function at the unit level (outside the class)
-procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer);
+procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; 
+  Left, Right: Integer; Ascending: Boolean = True);
 var
   I, J: Integer;
   Pivot, TempValue: Double;
+  TempIndex: Integer;
+  IsNull: array of Boolean;
+  NullCount: Integer;
+begin
+  // First, handle null values by moving them to the end
+  SetLength(IsNull, Length(Values));
+  NullCount := 0;
+  
+  // Mark null values and convert them to 0 for sorting
+  for I := Left to Right do
+  begin
+    IsNull[I] := IsNan(Values[I]);
+    if IsNull[I] then
+    begin
+      Inc(NullCount);
+      Values[I] := 0;
+    end;
+  end;
+  
+  // If we have any non-null values, sort them
+  if (Right - Left + 1) > NullCount then
+  begin
+    if Left < Right then
+    begin
+      I := Left;
+      J := Right;
+      Pivot := Values[(Left + Right) div 2];
+      
+      repeat
+        if Ascending then
+        begin
+          while (I <= Right) and (not IsNull[I]) and (Values[I] < Pivot) do Inc(I);
+          while (J >= Left) and (not IsNull[J]) and (Values[J] > Pivot) do Dec(J);
+        end
+        else
+        begin
+          while (I <= Right) and (not IsNull[I]) and (Values[I] > Pivot) do Inc(I);
+          while (J >= Left) and (not IsNull[J]) and (Values[J] < Pivot) do Dec(J);
+        end;
+        
+        if I <= J then
+        begin
+          // Skip if either value is null
+          if not (IsNull[I] or IsNull[J]) then
+          begin
+            // Swap values
+            TempValue := Values[I];
+            Values[I] := Values[J];
+            Values[J] := TempValue;
+            
+            // Swap indices
+            TempIndex := Indices[I];
+            Indices[I] := Indices[J];
+            Indices[J] := TempIndex;
+            
+            // Swap null flags
+            TempValue := Ord(IsNull[I]);
+            IsNull[I] := IsNull[J];
+            IsNull[J] := Boolean(Round(TempValue));
+          end;
+          
+          Inc(I);
+          Dec(J);
+        end;
+      until I > J;
+      
+      // Recursively sort non-null portions
+      if Left < J then
+        QuickSortWithIndices(Values, Indices, Left, J, Ascending);
+      if I < Right then
+        QuickSortWithIndices(Values, Indices, I, Right, Ascending);
+    end;
+  end;
+  
+  // Move null values to the end (or beginning if descending)
+  if NullCount > 0 then
+  begin
+    if Ascending then
+    begin
+      // Move nulls to end
+      J := Right;
+      for I := Right downto Left do
+      begin
+        if not IsNull[I] then
+        begin
+          // Swap with rightmost position
+          TempValue := Values[I];
+          Values[I] := Values[J];
+          Values[J] := TempValue;
+          
+          TempIndex := Indices[I];
+          Indices[I] := Indices[J];
+          Indices[J] := TempIndex;
+          
+          Dec(J);
+        end;
+      end;
+    end
+    else
+    begin
+      // Move nulls to beginning for descending sort
+      J := Left;
+      for I := Left to Right do
+      begin
+        if not IsNull[I] then
+        begin
+          // Swap with leftmost position
+          TempValue := Values[I];
+          Values[I] := Values[J];
+          Values[J] := TempValue;
+          
+          TempIndex := Indices[I];
+          Indices[I] := Indices[J];
+          Indices[J] := TempIndex;
+          
+          Inc(J);
+        end;
+      end;
+    end;
+  end;
+end;
+
+
+procedure QuickSortWithStrings(var Values: array of string; var Indices: array of Integer;
+  Left, Right: Integer; Ascending: Boolean = True);
+var
+  I, J: Integer;
+  Pivot, TempValue: string;
   TempIndex: Integer;
 begin
   if Left < Right then
@@ -1331,8 +1472,16 @@ begin
     Pivot := Values[(Left + Right) div 2];
     
     repeat
-      while Values[I] < Pivot do Inc(I);
-      while Values[J] > Pivot do Dec(J);
+      if Ascending then
+      begin
+        while Values[I] < Pivot do Inc(I);
+        while Values[J] > Pivot do Dec(J);
+      end
+      else
+      begin
+        while Values[I] > Pivot do Inc(I);
+        while Values[J] < Pivot do Dec(J);
+      end;
       
       if I <= J then
       begin
@@ -1352,9 +1501,9 @@ begin
     until I > J;
     
     if Left < J then
-      QuickSortWithIndices(Values, Indices, Left, J);
+      QuickSortWithStrings(Values, Indices, Left, J, Ascending);
     if I < Right then
-      QuickSortWithIndices(Values, Indices, I, Right);
+      QuickSortWithStrings(Values, Indices, I, Right, Ascending);
   end;
 end;
 
@@ -2517,6 +2666,426 @@ begin
       Free;  // Clean up if constructor fails
       raise;
     end;
+  end;
+end;
+
+function TDuckFrame.Filter(const ColumnName: string; const Value: Variant): TDuckFrame;
+begin
+  Result := Filter(ColumnName, '=', Value);
+end;
+
+function TDuckFrame.Filter(const ColumnName: string; const CompareOp: string; 
+  const Value: Variant): TDuckFrame;
+var
+  I, ColIndex, NewRowCount: Integer;
+  MatchFound: Boolean;
+  Row: Integer;
+begin
+  Result := TDuckFrame.Create;
+  try
+    ColIndex := FindColumnIndex(ColumnName);
+    if ColIndex = -1 then
+      raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnName]);
+
+    // First pass: count matching rows
+    NewRowCount := 0;
+    for I := 0 to FRowCount - 1 do
+    begin
+      MatchFound := False;
+      
+      if VarIsNull(FColumns[ColIndex].Data[I]) then
+        Continue;
+        
+      case AnsiLowerCase(CompareOp) of
+        '=', '==': MatchFound := FColumns[ColIndex].Data[I] = Value;
+        '<>','!=': MatchFound := FColumns[ColIndex].Data[I] <> Value;
+        '<': MatchFound := FColumns[ColIndex].Data[I] < Value;
+        '>': MatchFound := FColumns[ColIndex].Data[I] > Value;
+        '<=': MatchFound := FColumns[ColIndex].Data[I] <= Value;
+        '>=': MatchFound := FColumns[ColIndex].Data[I] >= Value;
+        else
+          raise EDuckDBError.CreateFmt('Unsupported comparison operator: %s', [CompareOp]);
+      end;
+      
+      if MatchFound then
+        Inc(NewRowCount);
+    end;
+
+    // Initialize result frame
+    Result.FRowCount := NewRowCount;
+    SetLength(Result.FColumns, Length(FColumns));
+    
+    for I := 0 to Length(FColumns) - 1 do
+    begin
+      Result.FColumns[I].Name := FColumns[I].Name;
+      Result.FColumns[I].DataType := FColumns[I].DataType;
+      SetLength(Result.FColumns[I].Data, NewRowCount);
+    end;
+
+    // Second pass: copy matching rows
+    Row := 0;
+    for I := 0 to FRowCount - 1 do
+    begin
+      MatchFound := False;
+      
+      if not VarIsNull(FColumns[ColIndex].Data[I]) then
+      begin
+        case AnsiLowerCase(CompareOp) of
+          '=', '==': MatchFound := FColumns[ColIndex].Data[I] = Value;
+          '<>','!=': MatchFound := FColumns[ColIndex].Data[I] <> Value;
+          '<': MatchFound := FColumns[ColIndex].Data[I] < Value;
+          '>': MatchFound := FColumns[ColIndex].Data[I] > Value;
+          '<=': MatchFound := FColumns[ColIndex].Data[I] <= Value;
+          '>=': MatchFound := FColumns[ColIndex].Data[I] >= Value;
+        end;
+      end;
+      
+      if MatchFound then
+      begin
+        for ColIndex := 0 to Length(FColumns) - 1 do
+          Result.FColumns[ColIndex].Data[Row] := FColumns[ColIndex].Data[I];
+        Inc(Row);
+      end;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TDuckFrame.Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame;
+var
+  SortCols: array of string;
+  SortAsc: array of Boolean;
+begin
+  SetLength(SortCols, 1);
+  SetLength(SortAsc, 1);
+  SortCols[0] := ColumnName;
+  SortAsc[0] := Ascending;
+  Result := Sort(SortCols, SortAsc);
+end;
+
+function TDuckFrame.Sort(const ColumnNames: array of string; 
+  const Ascending: array of Boolean): TDuckFrame;
+var
+  I, J, ColIndex: Integer;
+  Indices: array of Integer;
+  RealValues: array of Double;
+  StrValues: array of string;
+  ColType: TDuckDBColumnType;
+begin
+  Result := TDuckFrame.Create;
+  try
+    if Length(ColumnNames) = 0 then
+      raise EDuckDBError.Create('No columns specified for sorting');
+    if Length(ColumnNames) <> Length(Ascending) then
+      raise EDuckDBError.Create('Number of columns and sort directions must match');
+
+    // Initialize indices
+    SetLength(Indices, FRowCount);
+    for I := 0 to FRowCount - 1 do
+      Indices[I] := I;
+
+    // Sort for each column in reverse order (to maintain stable sort)
+    for I := High(ColumnNames) downto 0 do
+    begin
+      ColIndex := FindColumnIndex(ColumnNames[I]);
+      if ColIndex = -1 then
+        raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnNames[I]]);
+
+      ColType := FColumns[ColIndex].DataType;
+      
+      // Prepare RealValues for sorting
+      case ColType of
+        dctString:
+          begin
+            SetLength(StrValues, FRowCount);
+            for J := 0 to FRowCount - 1 do
+              if VarIsNull(FColumns[ColIndex].Data[Indices[J]]) then
+                StrValues[J] := ''
+              else
+                StrValues[J] := VarToStr(FColumns[ColIndex].Data[Indices[J]]);
+            // Sort string RealValues
+            QuickSortWithStrings(StrValues, Indices, 0, FRowCount - 1, Ascending[I]);
+          end;
+        else
+          begin
+            // Convert to numeric for all other types
+            SetLength(RealValues, FRowCount);
+            for J := 0 to FRowCount - 1 do
+              if VarIsNull(FColumns[ColIndex].Data[Indices[J]]) then
+                RealValues[J] := 0
+              else
+                RealValues[J] := VarAsType(FColumns[ColIndex].Data[Indices[J]], varDouble);
+            // Sort numeric RealValues
+            QuickSortWithIndices(RealValues, Indices, 0, FRowCount - 1, Ascending[I]);
+          end;
+      end;
+    end;
+
+    // Create sorted result
+    Result.FRowCount := FRowCount;
+    SetLength(Result.FColumns, Length(FColumns));
+    
+    for I := 0 to High(FColumns) do
+    begin
+      Result.FColumns[I].Name := FColumns[I].Name;
+      Result.FColumns[I].DataType := FColumns[I].DataType;
+      SetLength(Result.FColumns[I].Data, FRowCount);
+      
+      for J := 0 to FRowCount - 1 do
+        Result.FColumns[I].Data[J] := FColumns[I].Data[Indices[J]];
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+
+function TDuckFrame.Sample(Count: Integer): TDuckFrame;
+var
+  I, J, RandIndex: Integer;
+  UsedIndices: array of Boolean;
+begin
+  Result := TDuckFrame.Create;
+  try
+    if Count > FRowCount then
+      Count := FRowCount;
+      
+    if Count <= 0 then
+      raise EDuckDBError.Create('Sample count must be positive');
+
+    // Initialize result structure
+    Result.FRowCount := Count;
+    SetLength(Result.FColumns, Length(FColumns));
+    
+    for I := 0 to High(FColumns) do
+    begin
+      Result.FColumns[I].Name := FColumns[I].Name;
+      Result.FColumns[I].DataType := FColumns[I].DataType;
+      SetLength(Result.FColumns[I].Data, Count);
+    end;
+
+    // Track used indices to avoid duplicates
+    SetLength(UsedIndices, FRowCount);
+    for I := 0 to High(UsedIndices) do
+      UsedIndices[I] := False;
+
+    // Random sampling without replacement
+    Randomize;  // Initialize random number generator
+    for I := 0 to Count - 1 do
+    begin
+      repeat
+        RandIndex := Random(FRowCount);
+      until not UsedIndices[RandIndex];
+      
+      UsedIndices[RandIndex] := True;
+      
+      // Copy row data
+      for J := 0 to High(FColumns) do
+        Result.FColumns[J].Data[I] := FColumns[J].Data[RandIndex];
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TDuckFrame.Sample(Percentage: Double): TDuckFrame;
+var
+  SampleCount: Integer;
+begin
+  if (Percentage <= 0) or (Percentage > 100) then
+    raise EDuckDBError.Create('Percentage must be between 0 and 100');
+    
+  SampleCount := Round((Percentage / 100) * FRowCount);
+  if SampleCount = 0 then
+    SampleCount := 1;
+    
+  Result := Sample(SampleCount);
+end;
+
+function TDuckFrame.GroupBy(const ColumnNames: array of string): TDuckFrame;
+var
+  I, J, ColIndex: Integer;
+  GroupMap: specialize TDictionary<string, Integer>;
+  GroupKey: string;
+  CurrentGroup: Integer;
+begin
+  Result := TDuckFrame.Create;
+  GroupMap := specialize TDictionary<string, Integer>.Create;
+  try
+    // Validate columns exist
+    for I := 0 to High(ColumnNames) do
+      if FindColumnIndex(ColumnNames[I]) < 0 then
+        raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnNames[I]]);
+
+    // Build group keys and count unique groups
+    for I := 0 to FRowCount - 1 do
+    begin
+      GroupKey := '';
+      for J := 0 to High(ColumnNames) do
+      begin
+        ColIndex := FindColumnIndex(ColumnNames[J]);
+        GroupKey := GroupKey + VarToStr(FColumns[ColIndex].Data[I]) + #0;
+      end;
+      
+      if not GroupMap.ContainsKey(GroupKey) then
+        GroupMap.Add(GroupKey, GroupMap.Count);
+    end;
+
+    // Setup result structure
+    Result.FRowCount := GroupMap.Count;
+    SetLength(Result.FColumns, Length(ColumnNames) + 1); // +1 for count column
+    
+    // Setup group columns
+    for I := 0 to High(ColumnNames) do
+    begin
+      ColIndex := FindColumnIndex(ColumnNames[I]);
+      Result.FColumns[I].Name := ColumnNames[I];
+      Result.FColumns[I].DataType := FColumns[ColIndex].DataType;
+      SetLength(Result.FColumns[I].Data, Result.FRowCount);
+    end;
+    
+    // Setup count column
+    Result.FColumns[High(Result.FColumns)].Name := 'Count';
+    Result.FColumns[High(Result.FColumns)].DataType := dctInteger;
+    SetLength(Result.FColumns[High(Result.FColumns)].Data, Result.FRowCount);
+
+    // Reset map for second pass
+    GroupMap.Clear;
+    
+    // Fill result data
+    for I := 0 to FRowCount - 1 do
+    begin
+      GroupKey := '';
+      for J := 0 to High(ColumnNames) do
+      begin
+        ColIndex := FindColumnIndex(ColumnNames[J]);
+        GroupKey := GroupKey + VarToStr(FColumns[ColIndex].Data[I]) + #0;
+      end;
+      
+      if not GroupMap.ContainsKey(GroupKey) then
+      begin
+        CurrentGroup := GroupMap.Count;
+        GroupMap.Add(GroupKey, CurrentGroup);
+        
+        // Fill group values
+        for J := 0 to High(ColumnNames) do
+        begin
+          ColIndex := FindColumnIndex(ColumnNames[J]);
+          Result.FColumns[J].Data[CurrentGroup] := FColumns[ColIndex].Data[I];
+        end;
+        Result.FColumns[High(Result.FColumns)].Data[CurrentGroup] := 1;
+      end
+      else
+      begin
+        CurrentGroup := GroupMap[GroupKey];
+        Result.FColumns[High(Result.FColumns)].Data[CurrentGroup] :=
+          Result.FColumns[High(Result.FColumns)].Data[CurrentGroup] + 1;
+      end;
+    end;
+  finally
+    GroupMap.Free;
+  end;
+end;
+
+function TDuckFrame.RenameColumn(const OldName, NewName: string): TDuckFrame;
+var
+  I, ColIndex: Integer;
+begin
+  Result := TDuckFrame.Create;
+  try
+    // Check if old column exists
+    ColIndex := FindColumnIndex(OldName);
+    if ColIndex < 0 then
+      raise EDuckDBError.CreateFmt('Column "%s" not found', [OldName]);
+      
+    // Check if new name already exists
+    if (OldName <> NewName) and (FindColumnIndex(NewName) >= 0) then
+      raise EDuckDBError.CreateFmt('Column "%s" already exists', [NewName]);
+
+    // Copy structure
+    Result.FRowCount := FRowCount;
+    SetLength(Result.FColumns, Length(FColumns));
+    
+    // Copy data and rename column
+    for I := 0 to High(FColumns) do
+    begin
+      Result.FColumns[I].DataType := FColumns[I].DataType;
+      if I = ColIndex then
+        Result.FColumns[I].Name := NewName
+      else
+        Result.FColumns[I].Name := FColumns[I].Name;
+        
+      SetLength(Result.FColumns[I].Data, FRowCount);
+      Move(FColumns[I].Data[0], Result.FColumns[I].Data[0], 
+           FRowCount * SizeOf(Variant));
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TDuckFrame.DropColumns(const ColumnNames: array of string): TDuckFrame;
+var
+  I, J, NewColCount: Integer;
+  ColsToKeep: array of Boolean;
+begin
+  Result := TDuckFrame.Create;
+  try
+    // Mark columns to keep
+    SetLength(ColsToKeep, Length(FColumns));
+    NewColCount := Length(FColumns);
+    
+    // Initialize all columns as "keep"
+    for I := 0 to High(ColsToKeep) do
+      ColsToKeep[I] := True;
+    
+    // Mark columns to drop
+    for I := 0 to High(ColumnNames) do
+    begin
+      J := FindColumnIndex(ColumnNames[I]);
+      if J >= 0 then
+      begin
+        if ColsToKeep[J] then
+        begin
+          ColsToKeep[J] := False;
+          Dec(NewColCount);
+        end;
+      end;
+    end;
+
+    // Check if we're dropping all columns
+    if NewColCount = 0 then
+      raise EDuckDBError.Create('Cannot drop all columns');
+
+    // Initialize result frame
+    Result.FRowCount := FRowCount;
+    SetLength(Result.FColumns, NewColCount);
+    
+    // Copy remaining columns
+    NewColCount := 0;
+    for I := 0 to High(FColumns) do
+    begin
+      if ColsToKeep[I] then
+      begin
+        Result.FColumns[NewColCount].Name := FColumns[I].Name;
+        Result.FColumns[NewColCount].DataType := FColumns[I].DataType;
+        SetLength(Result.FColumns[NewColCount].Data, FRowCount);
+        
+        // Use Move for better performance when copying data
+        Move(FColumns[I].Data[0], Result.FColumns[NewColCount].Data[0],
+             FRowCount * SizeOf(Variant));
+             
+        Inc(NewColCount);
+      end;
+    end;
+  except
+    Result.Free;
+    raise;
   end;
 end;
 

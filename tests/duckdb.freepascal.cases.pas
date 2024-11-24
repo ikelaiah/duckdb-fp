@@ -40,19 +40,19 @@ type
     procedure TestCreateFromDuckDB;
 
     // Basic Operations
-    procedure TestAddColumn;
-    procedure TestAddRow;
+    procedure TestAddColumnDuplicateFails;
+    procedure TestAddRowMismatchedValuesFails;
     procedure TestSetValue;
     procedure TestClear;
-    procedure TestGetColumnByName;
+    procedure TestGetNonExistentColumnFails;
     procedure TestGetColumnNames;
     procedure TestFindColumnIndex;
     procedure TestDateTimeArrays;
 
     // Data Access
     procedure TestHead;
-    procedure TestValuesByName;
-    procedure TestValues;
+    procedure TestOutOfRangeValuesByNameFails;
+    procedure TestOutOfRangeValuesFails;
 
     // Data Manipulation
     procedure TestUnion;
@@ -77,9 +77,9 @@ type
     procedure TestSaveToCSV;
 
     // Error Handling
-    procedure TestInvalidColumnAccess;
-    procedure TestInvalidRowAccess;
-    procedure TestInvalidCSVFile;
+    procedure TestInvalidColumnAccessFails;
+    procedure TestInvalidRowAccessFails;
+    procedure TestMissingCSVFileFails;
 
     // Type Conversion
     procedure TestTryConvertValue;
@@ -93,7 +93,16 @@ type
     procedure TestCreateFromSingleParquet;
     procedure TestCreateFromMultipleParquet;
     procedure TestCreateFromNonParquetExtension;
-    procedure TestCreateFromParquetErrors;
+    procedure TestMissingParquetFileFails;
+
+    // Data Manipulation
+    procedure TestFilter;
+    procedure TestSort;
+    procedure TestSortWithNulls;
+    procedure TestGroupBy;
+    procedure TestSample;
+    procedure TestRenameColumn;
+    procedure TestDropColumns;
   end;
 
 implementation
@@ -701,7 +710,7 @@ end;
 
 { Error Handling Tests }
 
-procedure TDuckDBDataFrameTest.TestInvalidColumnAccess;
+procedure TDuckDBDataFrameTest.TestInvalidColumnAccessFails;
 var
   Frame: TDuckFrame;
 begin
@@ -728,7 +737,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestInvalidRowAccess;
+procedure TDuckDBDataFrameTest.TestInvalidRowAccessFails;
 var
   Frame: TDuckFrame;
 begin
@@ -856,7 +865,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestAddColumn;
+procedure TDuckDBDataFrameTest.TestAddColumnDuplicateFails;
 var
   Frame: TDuckFrame;
   i: integer;
@@ -886,7 +895,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestAddRow;
+procedure TDuckDBDataFrameTest.TestAddRowMismatchedValuesFails;
 var
   Frame: TDuckFrame;
   NewRow: array of variant;
@@ -932,7 +941,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestGetColumnByName;
+procedure TDuckDBDataFrameTest.TestGetNonExistentColumnFails;
 var
   Frame: TDuckFrame;
   Column: TDuckDBColumn;
@@ -1043,7 +1052,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestValuesByName;
+procedure TDuckDBDataFrameTest.TestOutOfRangeValuesByNameFails;
 var
   Frame: TDuckFrame;
   Value: variant;
@@ -1089,7 +1098,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestValues;
+procedure TDuckDBDataFrameTest.TestOutOfRangeValuesFails;
 var
   Frame: TDuckFrame;
   Value: variant;
@@ -1175,7 +1184,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestInvalidCSVFile;
+procedure TDuckDBDataFrameTest.TestMissingCSVFileFails;
 var
   Frame: TDuckFrame;
 begin
@@ -1371,7 +1380,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestCreateFromParquetErrors;
+procedure TDuckDBDataFrameTest.TestMissingParquetFileFails;
 var
   Frame: TDuckFrame;
   EmptyFiles: array of string;
@@ -1393,6 +1402,182 @@ begin
   except
     on E: EDuckDBError do
       ; // Expected exception
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestFilter;
+var
+  Frame, FilteredFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test simple equality filter
+    FilteredFrame := Frame.Filter('Age', 30);
+    try
+      AssertEquals('Should have 1 row', 1, FilteredFrame.RowCount);
+      AssertEquals('Should have correct name', 'John', string(FilteredFrame.ValuesByName[0, 'Name']));
+    finally
+      FilteredFrame.Free;
+    end;
+
+    // Test comparison operator filter
+    FilteredFrame := Frame.Filter('Salary', '>', 70000);
+    try
+      AssertEquals('Should have 2 rows', 2, FilteredFrame.RowCount);
+      AssertEquals('First row name', 'John', string(FilteredFrame.ValuesByName[0, 'Name']));
+      AssertEquals('Second row name', 'Bob', string(FilteredFrame.ValuesByName[1, 'Name']));
+    finally
+      FilteredFrame.Free;
+    end;
+
+    // Test filter with null values
+    FilteredFrame := Frame.Filter('Age', Null);
+    try
+      AssertEquals('Should have 0 rows (nulls excluded)', 0, FilteredFrame.RowCount);
+    finally
+      FilteredFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestSort;
+const
+  DELTA = 0.001; // Acceptable difference for floating point comparisons
+var
+  Frame, SortedFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test single column sort ascending (non-null values only)
+    SortedFrame := Frame.Sort('Salary', True);
+    try
+      AssertEquals('Should preserve row count', Frame.RowCount, SortedFrame.RowCount);
+      AssertTrue('First salary should be lowest', 
+        Abs(65000.75 - Double(SortedFrame.ValuesByName[0, 'Salary'])) < DELTA);
+      AssertTrue('Last salary should be highest',
+        Abs(85000.25 - Double(SortedFrame.ValuesByName[3, 'Salary'])) < DELTA);
+    finally
+      SortedFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestSortWithNulls;
+var
+  Frame, SortedFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    SortedFrame := Frame.Sort('Age', True);
+    try
+      AssertEquals('Should preserve row count', Frame.RowCount, SortedFrame.RowCount);
+      AssertEquals('First age should be 25', 25, Integer(SortedFrame.ValuesByName[0, 'Age']));
+      AssertEquals('Second age should be 30', 30, Integer(SortedFrame.ValuesByName[1, 'Age']));
+      AssertEquals('Third age should be 35', 35, Integer(SortedFrame.ValuesByName[2, 'Age']));
+      AssertTrue('Last row should be null', VarIsNull(SortedFrame.ValuesByName[3, 'Age']));
+    finally
+      SortedFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestGroupBy;
+var
+  Frame, GroupedFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test single column grouping
+    GroupedFrame := Frame.GroupBy(['City']);
+    try
+      AssertEquals('Should have unique cities count', 4, GroupedFrame.RowCount);
+      AssertEquals('Should have count column', 'Count', GroupedFrame.Columns[GroupedFrame.ColumnCount - 1].Name);
+      AssertEquals('Each city should have count 1', 1, Integer(GroupedFrame.ValuesByName[0, 'Count']));
+    finally
+      GroupedFrame.Free;
+    end;
+
+    // Test multiple column grouping
+    GroupedFrame := Frame.GroupBy(['City', 'Age']);
+    try
+      AssertEquals('Should have city-age combinations', 4, GroupedFrame.RowCount);
+    finally
+      GroupedFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestSample;
+var
+  Frame, SampledFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test count-based sampling
+    SampledFrame := Frame.Sample(2);
+    try
+      AssertEquals('Should have requested number of rows', 2, SampledFrame.RowCount);
+      AssertEquals('Should have same number of columns', Frame.ColumnCount, SampledFrame.ColumnCount);
+    finally
+      SampledFrame.Free;
+    end;
+
+    // Test percentage-based sampling
+    SampledFrame := Frame.Sample(50.0);
+    try
+      AssertEquals('Should have 50% of rows', 2, SampledFrame.RowCount);
+      AssertEquals('Should have same number of columns', Frame.ColumnCount, SampledFrame.ColumnCount);
+    finally
+      SampledFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestRenameColumn;
+var
+  Frame, RenamedFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    RenamedFrame := Frame.RenameColumn('Age', 'Years');
+    try
+      AssertEquals('Should have same number of columns', Frame.ColumnCount, RenamedFrame.ColumnCount);
+      AssertEquals('Should have renamed column', 'Years', RenamedFrame.Columns[1].Name);
+      AssertEquals('Should preserve data', 30, Integer(RenamedFrame.ValuesByName[0, 'Years']));
+    finally
+      RenamedFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestDropColumns;
+var
+  Frame, DroppedFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    DroppedFrame := Frame.DropColumns(['Age', 'City']);
+    try
+      AssertEquals('Should have 2 remaining columns', 2, DroppedFrame.ColumnCount);
+      AssertEquals('Should preserve Name column', 'Name', DroppedFrame.Columns[0].Name);
+      AssertEquals('Should preserve Salary column', 'Salary', DroppedFrame.Columns[1].Name);
+    finally
+      DroppedFrame.Free;
+    end;
+  finally
+    Frame.Free;
   end;
 end;
 
