@@ -11,6 +11,8 @@ uses
 type
   EDuckDBError = class(Exception);
 
+  TDuckFrame = class;
+
   { TDuckDBConnection --------------------------------------------------------}
   TDuckDBConnection = class
   private
@@ -47,8 +49,7 @@ type
     procedure WriteToTable(const DataFrame: TDuckFrame; const TableName: string; const SchemaName: string = 'main');
   end;
 
-// Move function declaration to interface section
-function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
+
 
 
 { TDuckFrame -----------------------------------------------------------------}
@@ -73,6 +74,7 @@ function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
     - Similar to SQL's FULL OUTER JOIN concept
     - Useful when you want to preserve all data from both frames
   }
+
   TUnionMode = (
     umStrict,    // Strict mode: columns must match exactly
     umCommon,    // Common columns: only include columns that appear in both frames
@@ -263,6 +265,9 @@ function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
                        const AValue: Variant);
 
   end;
+
+// Move function declaration to interface section
+function GetDuckDBTypeString(ColumnType: TDuckDBColumnType): string;
 
 { Helper function for sorting }
 procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
