@@ -45,11 +45,8 @@ type
     procedure Commit;
     procedure Rollback;
     
-    class function ReadCSV(const FileName: string): TDuckFrame;
     procedure WriteToTable(const DataFrame: TDuckFrame; const TableName: string; const SchemaName: string = 'main');
   end;
-
-
 
 
 { TDuckFrame -----------------------------------------------------------------}
@@ -449,28 +446,6 @@ end;
 procedure TDuckDBConnection.Rollback;
 begin
   ExecuteSQL('ROLLBACK');
-end;
-
-class function TDuckDBConnection.ReadCSV(const FileName: string): TDuckFrame;
-var
-  SQLQuery: string;
-  DB: TDuckDBConnection;
-begin
-  if not FileExists(FileName) then
-    raise EDuckDBError.CreateFmt('File not found: %s', [FileName]);
-
-  DB := TDuckDBConnection.Create;
-  try
-    DB.Open;
-    
-    SQLQuery := Format('SELECT * FROM read_csv_auto(''%s'')', [
-      StringReplace(FileName, '''', '''''', [rfReplaceAll])
-    ]);
-    
-    Result := DB.Query(SQLQuery);
-  finally
-    DB.Free;
-  end;
 end;
 
 procedure TDuckDBConnection.WriteToTable(const DataFrame: TDuckFrame; const TableName: string; 
