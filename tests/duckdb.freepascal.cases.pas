@@ -27,6 +27,13 @@ type
     procedure CreateSampleParquetFile(const FilePath: string);
     procedure CreateMultipleParquetFiles;
 
+    // Add these methods to handle the filtering/mapping
+    function FilterPredicate(Row: Integer): Boolean;
+    function MapSalary(Value: Variant): Variant;
+    function SalaryTierCalc(Row: Integer): Variant;
+    function AgeGroupCalc(Row: Integer): Variant;
+    function DateYearCalc(Row: Integer): Variant;
+
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -94,6 +101,28 @@ type
     procedure TestCreateFromMultipleParquet;
     procedure TestCreateFromNonParquetExtension;
     procedure TestCreateFromParquetErrors;
+
+    // Data manipulation tests
+    procedure TestFilter;
+    procedure TestFilterWithPredicate;
+    procedure TestFilterWithSQL;
+    procedure TestSlice;
+    procedure TestMap;
+    procedure TestSort;
+    procedure TestGroupBy;
+    procedure TestSummarize;
+    procedure TestJoin;
+    procedure TestPivot;
+    procedure TestMelt;
+    procedure TestAddCalculatedColumn;
+    procedure TestReplace;
+    procedure TestExtractDatePart;
+    procedure TestMultipleCalculatedColumns;
+    procedure TestCalculatedColumnErrors;
+    procedure TestChainedOperations;
+
+    // Additional Helper Tests
+    procedure TestPipe;
   end;
 
 implementation
@@ -1393,6 +1422,502 @@ begin
   except
     on E: EDuckDBError do
       ; // Expected exception
+  end;
+end;
+
+
+procedure TDuckDBDataFrameTest.TestFilter;
+var
+  Frame, Filtered: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test simple equality filter
+    Filtered := Frame.Filter('Age', 30);
+    try
+      AssertEquals('Should have 1 row', 1, Filtered.RowCount);
+      AssertEquals('Should match name', 'John', string(Filtered.ValuesByName[0, 'Name']));
+    finally
+      Filtered.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestFilterWithPredicate;
+var
+  Frame, Filtered: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    Filtered := Frame.Filter(@FilterPredicate);
+    try
+      AssertEquals('Should have 2 rows', 2, Filtered.RowCount);
+      AssertTrue('Should include John', 
+        string(Filtered.ValuesByName[0, 'Name']) = 'John');
+      AssertTrue('Should include Bob', 
+        string(Filtered.ValuesByName[1, 'Name']) = 'Bob');
+    finally
+      Filtered.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestFilterWithSQL;
+var
+  Frame, Filtered: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test SQL filter
+    Filtered := Frame.Filter('Age > 25 AND City LIKE ''%o%''');
+    try
+      AssertEquals('Should have 2 rows', 2, Filtered.RowCount);
+      AssertTrue('Should contain Boston or Chicago', 
+        (Pos('Boston', string(Filtered.ValuesByName[0, 'City'])) > 0) or
+        (Pos('Chicago', string(Filtered.ValuesByName[0, 'City'])) > 0));
+    finally
+      Filtered.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestSlice;
+var
+  Frame, Sliced: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    Sliced := Frame.Slice(1, 2);  // Get rows 1-2 (0-based)
+    try
+      AssertEquals('Should have 2 rows', 2, Sliced.RowCount);
+      AssertEquals('First row should be Alice', 'Alice', 
+        string(Sliced.ValuesByName[0, 'Name']));
+      AssertEquals('Second row should be Bob', 'Bob', 
+        string(Sliced.ValuesByName[1, 'Name']));
+    finally
+      Sliced.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestMap;
+var
+  Frame, Mapped: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test mapping salary to thousands
+    Mapped := Frame.Map('Salary', @MapSalary);
+    try
+      AssertEquals('Should maintain row count', Frame.RowCount, Mapped.RowCount);
+      AssertEquals('Should convert salary to thousands', 75.0005, 
+        Double(Mapped.ValuesByName[0, 'Salary']), 0.0001);
+    finally
+      Mapped.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestSort;
+var
+  Frame, Sorted: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    Sorted := Frame.Sort(['Age'], [soAscending]);
+    try
+      AssertEquals('Should maintain row count', Frame.RowCount, Sorted.RowCount);
+      AssertEquals('First row should be youngest', 'Alice', 
+        string(Sorted.ValuesByName[0, 'Name']));
+      AssertEquals('Last row should be oldest', 'Bob', 
+        string(Sorted.ValuesByName[2, 'Name']));
+    finally
+      Sorted.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestGroupBy;
+var
+  Frame, Grouped: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Add another row with same city
+    Frame.AddRow(['David', 45, 'Boston', 95000.0]);
+    
+    Grouped := Frame.GroupBy(['City'])
+                   .Summarize(['Salary'], ['AVG']);
+    try
+      AssertEquals('Should have one row per city', 4, Grouped.RowCount);
+      // Find Boston's average salary
+      for var i := 0 to Grouped.RowCount - 1 do
+        if Grouped.ValuesByName[i, 'City'] = 'Boston' then
+          AssertEquals('Boston average salary', 80000.875, 
+            Double(Grouped.ValuesByName[i, 'Salary_AVG']), 0.001);
+    finally
+      Grouped.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestAddCalculatedColumn;
+var
+  Frame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Add salary tier column
+    Frame.AddCalculatedColumn('SalaryTier', @SalaryTierCalc);
+    AssertEquals('Should have new column', 5, Frame.ColumnCount);
+    AssertEquals('Should calculate tier correctly', 'Medium',
+      string(Frame.ValuesByName[0, 'SalaryTier']));
+
+    // Add age group column
+    Frame.AddCalculatedColumn('AgeGroup', @AgeGroupCalc);
+    AssertEquals('Should have second new column', 6, Frame.ColumnCount);
+    AssertEquals('Should calculate age group correctly', 'Mid',
+      string(Frame.ValuesByName[0, 'AgeGroup']));
+    AssertEquals('Should handle null age', 'Unknown',
+      string(Frame.ValuesByName[3, 'AgeGroup']));
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestReplace;
+var
+  Frame, Replaced: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    Replaced := Frame.Replace('City', 'New York', 'NYC');
+    try
+      AssertEquals('Should replace city name', 'NYC',
+        string(Replaced.ValuesByName[0, 'City']));
+    finally
+      Replaced.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestPivot;
+var
+  Frame, Pivoted: TDuckFrame;
+begin
+  // Create a frame suitable for pivoting
+  Frame := TDuckFrame.CreateBlank(['Person', 'Metric', 'Value'],
+    [dctString, dctString, dctDouble]);
+  try
+    // Add sample data in long format
+    Frame.AddRow(['John', 'Height', 180.0]);
+    Frame.AddRow(['John', 'Weight', 75.0]);
+    Frame.AddRow(['Alice', 'Height', 165.0]);
+    Frame.AddRow(['Alice', 'Weight', 55.0]);
+    
+    // Pivot the data to wide format
+    Pivoted := Frame.Pivot('Person', 'Metric', 'Value');
+    try
+      AssertEquals('Should have one row per person', 2, Pivoted.RowCount);
+      AssertEquals('Should have columns for Person, Height, Weight', 
+        3, Pivoted.ColumnCount);
+      
+      // Check pivoted values
+      AssertEquals('John height', 180.0, 
+        Double(Pivoted.ValuesByName[0, 'Height']), 0.001);
+      AssertEquals('Alice weight', 55.0, 
+        Double(Pivoted.ValuesByName[1, 'Weight']), 0.001);
+    finally
+      Pivoted.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestMelt;
+var
+  Frame, Melted: TDuckFrame;
+begin
+  // Create a frame in wide format
+  Frame := TDuckFrame.CreateBlank(['Name', 'Height', 'Weight'],
+    [dctString, dctDouble, dctDouble]);
+  try
+    Frame.AddRow(['John', 180.0, 75.0]);
+    Frame.AddRow(['Alice', 165.0, 55.0]);
+    
+    // Melt to long format
+    Melted := Frame.Melt(['Name'], ['Height', 'Weight']);
+    try
+      AssertEquals('Should have row for each metric', 4, Melted.RowCount);
+      AssertEquals('Should have columns for ID, Variable, Value', 
+        3, Melted.ColumnCount);
+      
+      // Check first row (John's height)
+      AssertEquals('First row name', 'John', 
+        string(Melted.ValuesByName[0, 'Name']));
+      AssertEquals('First row metric', 'Height', 
+        string(Melted.ValuesByName[0, 'Variable']));
+      AssertEquals('First row value', 180.0, 
+        Double(Melted.ValuesByName[0, 'Value']), 0.001);
+    finally
+      Melted.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestJoin;
+var
+  Frame1, Frame2, Joined: TDuckFrame;
+begin
+  // Create first frame with employee details
+  Frame1 := TDuckFrame.CreateBlank(['EmpID', 'Name', 'DeptID'],
+    [dctInteger, dctString, dctInteger]);
+  Frame2 := TDuckFrame.CreateBlank(['DeptID', 'DeptName', 'Location'],
+    [dctInteger, dctString, dctString]);
+  try
+    // Add data to Frame1 (Employees)
+    Frame1.AddRow([1, 'John', 100]);
+    Frame1.AddRow([2, 'Alice', 200]);
+    Frame1.AddRow([3, 'Bob', 100]);
+    
+    // Add data to Frame2 (Departments)
+    Frame2.AddRow([100, 'Engineering', 'New York']);
+    Frame2.AddRow([200, 'Sales', 'Boston']);
+    Frame2.AddRow([300, 'Marketing', 'Chicago']);
+    
+    // Test inner join
+    Joined := Frame1.Join(Frame2, ['DeptID'], ['DeptID']);
+    try
+      AssertEquals('Should have matching rows only', 3, Joined.RowCount);
+      AssertEquals('Should combine columns', 5, Joined.ColumnCount);
+      
+      // Check joined data
+      AssertEquals('First row name', 'John',
+        string(Joined.ValuesByName[0, 'Name']));
+      AssertEquals('First row department', 'Engineering',
+        string(Joined.ValuesByName[0, 'DeptName']));
+    finally
+      Joined.Free;
+    end;
+    
+    // Test left join
+    Joined := Frame1.Join(Frame2, ['DeptID'], ['DeptID'], 'left');
+    try
+      AssertEquals('Should keep all left rows', Frame1.RowCount, Joined.RowCount);
+    finally
+      Joined.Free;
+    end;
+    
+    // Test right join
+    Joined := Frame1.Join(Frame2, ['DeptID'], ['DeptID'], 'right');
+    try
+      AssertTrue('Should include unmatched right rows', 
+        Joined.RowCount > Frame1.RowCount);
+    finally
+      Joined.Free;
+    end;
+  finally
+    Frame1.Free;
+    Frame2.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestExtractDatePart;
+var
+  Frame, Extracted: TDuckFrame;
+begin
+  // Create frame with date/time data
+  Frame := TDuckFrame.CreateBlank(['ID', 'Timestamp'],
+    [dctInteger, dctTimestamp]);
+  try
+    Frame.AddRow([1, EncodeDateTime(2023, 12, 25, 14, 30, 0, 0)]); // Christmas 2:30 PM
+    Frame.AddRow([2, EncodeDateTime(2024, 1, 1, 0, 0, 0, 0)]);     // New Year midnight
+    
+    // Test extracting year
+    Extracted := Frame.ExtractDatePart('Timestamp', 'year');
+    try
+      AssertEquals('Should maintain row count', Frame.RowCount, Extracted.RowCount);
+      AssertEquals('First row year', 2023,
+        Integer(Extracted.ValuesByName[0, 'Timestamp_year']));
+      AssertEquals('Second row year', 2024,
+        Integer(Extracted.ValuesByName[1, 'Timestamp_year']));
+    finally
+      Extracted.Free;
+    end;
+    
+    // Test extracting month
+    Extracted := Frame.ExtractDatePart('Timestamp', 'month');
+    try
+      AssertEquals('First row month', 12,
+        Integer(Extracted.ValuesByName[0, 'Timestamp_month']));
+      AssertEquals('Second row month', 1,
+        Integer(Extracted.ValuesByName[1, 'Timestamp_month']));
+    finally
+      Extracted.Free;
+    end;
+    
+    // Test extracting hour
+    Extracted := Frame.ExtractDatePart('Timestamp', 'hour');
+    try
+      AssertEquals('First row hour', 14,
+        Integer(Extracted.ValuesByName[0, 'Timestamp_hour']));
+      AssertEquals('Second row hour', 0,
+        Integer(Extracted.ValuesByName[1, 'Timestamp_hour']));
+    finally
+      Extracted.Free;
+    end;
+    
+    // Test invalid date part
+    try
+      Extracted := Frame.ExtractDatePart('Timestamp', 'invalid_part');
+      Fail('Should raise exception for invalid date part');
+    except
+      on E: EDuckDBError do
+        ; // Expected exception
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestSummarize;
+var
+  Frame, Summary: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Test multiple aggregations
+    Summary := Frame.Summarize(['Age', 'Salary'], ['AVG', 'MAX']);
+    try
+      AssertEquals('Should have one row', 1, Summary.RowCount);
+      AssertEquals('Should have two columns', 2, Summary.ColumnCount);
+      
+      // Check aggregated values (excluding null Age)
+      AssertEquals('Average age', 30.0,  // (30 + 25 + 35) / 3
+        Double(Summary.ValuesByName[0, 'Age_AVG']), 0.001);
+      AssertEquals('Max salary', 85000.25,
+        Double(Summary.ValuesByName[0, 'Salary_MAX']), 0.001);
+    finally
+      Summary.Free;
+    end;
+    
+    // Test single column, multiple aggregations
+    Summary := Frame.Summarize(['Salary'], ['MIN', 'MAX', 'AVG', 'COUNT']);
+    try
+      AssertEquals('Should have one row', 1, Summary.RowCount);
+      AssertEquals('Should have four columns', 4, Summary.ColumnCount);
+      AssertEquals('Count should include all rows', 4,
+        Integer(Summary.ValuesByName[0, 'Salary_COUNT']));
+    finally
+      Summary.Free;
+    end;
+    
+    // Test invalid aggregation function
+    try
+      Summary := Frame.Summarize(['Salary'], ['INVALID']);
+      Fail('Should raise exception for invalid aggregation function');
+    except
+      on E: EDuckDBError do
+        ; // Expected exception
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+function TDuckDBDataFrameTest.FilterPredicate(Row: Integer): Boolean;
+begin
+  Result := ValuesByName[Row, 'Salary'] > 70000;
+end;
+
+function TDuckDBDataFrameTest.MapSalary(Value: Variant): Variant;
+begin
+  if VarIsNull(Value) then
+    Result := Null
+  else
+    Result := Double(Value) / 1000;
+end;
+
+function TDuckDBDataFrameTest.SalaryTierCalc(Row: Integer): Variant;
+begin
+  if VarIsNull(ValuesByName[Row, 'Salary']) then
+    Result := 'Unknown'
+  else if ValuesByName[Row, 'Salary'] > 80000 then
+    Result := 'High'
+  else if ValuesByName[Row, 'Salary'] > 70000 then
+    Result := 'Medium'
+  else
+    Result := 'Low';
+end;
+
+function TDuckDBDataFrameTest.AgeGroupCalc(Row: Integer): Variant;
+begin
+  if VarIsNull(ValuesByName[Row, 'Age']) then
+    Result := 'Unknown'
+  else if ValuesByName[Row, 'Age'] < 30 then
+    Result := 'Young'
+  else if ValuesByName[Row, 'Age'] < 40 then
+    Result := 'Mid'
+  else
+    Result := 'Senior';
+end;
+
+function TDuckDBDataFrameTest.DateYearCalc(Row: Integer): Variant;
+begin
+  if VarIsNull(ValuesByName[Row, 'Timestamp']) then
+    Result := Null
+  else
+    Result := YearOf(ValuesByName[Row, 'Timestamp']);
+end;
+
+procedure TDuckDBDataFrameTest.TestPipe;
+var
+  Frame1, Frame2, Result: TDuckFrame;
+begin
+  Frame1 := CreateSampleFrame;
+  try
+    // Create a second frame with different data
+    Frame2 := TDuckFrame.CreateBlank(['Name', 'Age', 'City', 'Salary'],
+      [dctString, dctInteger, dctString, dctDouble]);
+    try
+      Frame2.AddRow(['Eve', 28, 'Seattle', 82000.00]);
+      
+      // Test piping operations
+      Result := Frame1
+        .Filter(@FilterPredicate)
+        .Pipe(Frame2)
+        .Sort(['Salary'], [soDescending]);
+      try
+        AssertEquals('Should have one row', 1, Result.RowCount);
+        AssertEquals('Should have Eve''s record', 'Eve',
+          string(Result.ValuesByName[0, 'Name']));
+      finally
+        Result.Free;
+      end;
+    finally
+      Frame2.Free;
+    end;
+  finally
+    Frame1.Free;
   end;
 end;
 

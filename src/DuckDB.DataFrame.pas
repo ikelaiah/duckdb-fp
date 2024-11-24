@@ -162,6 +162,13 @@ type
 
   TStringArray = array of string;  // Add this type declaration at the unit level
 
+  TFilterFunc = function(Row: Integer): Boolean of object;
+  TMapFunc = function(Value: Variant): Variant of object;
+  TGroupFunc = function(Value: Variant): Variant of object;
+  TCalcFunc = function(Row: Integer): Variant of object;
+  
+  TSortOrder = (soAscending, soDescending);
+
   { DataFrame class for handling query results in DuckDB compatible datatype}
   TDuckFrame = class
   private
@@ -180,7 +187,10 @@ type
     { Private helpers for constructors }
     procedure InitializeBlank(const AColumnNames: array of string; 
                             const AColumnTypes: array of TDuckDBColumnType);
-
+    
+    // Helper for group by operations
+    function GetGroupKey(const Row: Integer; const GroupCols: array of string): string;
+    
   public
 
     { Default Constructor and destructor }
@@ -262,6 +272,51 @@ type
     procedure SetValue(const ARow: Integer; const AColumnName: string; 
                        const AValue: Variant);
 
+    { Data Manipulation Methods }
+    
+    // Filter rows based on a condition
+    function Filter(Predicate: TFilterFunc): TDuckFrame; overload;
+    function Filter(const ColumnName: string; const Value: Variant): TDuckFrame; overload;
+    function Filter(const SQL: string): TDuckFrame; overload;
+    
+    // Select specific rows by index
+    function Slice(StartRow, EndRow: Integer): TDuckFrame;
+    
+    // Transform column values
+    function Map(const ColumnName: string; MapFn: TMapFunc): TDuckFrame;
+    
+    // Sort DataFrame
+    function Sort(const ColumnNames: array of string; 
+                 const Orders: array of TSortOrder): TDuckFrame;
+    
+    // Group operations
+    function GroupBy(const ColumnNames: array of string): TDuckFrame;
+    function Summarize(const AggColumns: array of string; 
+                      const AggFuncs: array of string): TDuckFrame;
+    
+    // Join operations
+    function Join(const Other: TDuckFrame; 
+                 const LeftColumns, RightColumns: array of string;
+                 const JoinType: string = 'inner'): TDuckFrame;
+    
+    // Reshape operations
+    function Pivot(const IdColumn, ValueColumn: string): TDuckFrame;
+    function Melt(const IdColumns, ValueColumns: array of string): TDuckFrame;
+    
+    // Column operations
+    function AddCalculatedColumn(const NewColumnName: string; 
+                               CalcFunc: TCalcFunc): TDuckFrame;
+    
+    // Fluent interface helpers
+    function Pipe(const NextFrame: TDuckFrame): TDuckFrame;
+    
+    // String operations on columns
+    function Replace(const ColumnName: string; 
+                    const OldValue, NewValue: string): TDuckFrame;
+    
+    // Date operations
+    function ExtractDatePart(const ColumnName: string; 
+                           const Part: string): TDuckFrame;
   end;
 
 // Move function declaration to interface section
@@ -276,6 +331,9 @@ function DuckDBTypeToString(ColumnType: TDuckDBColumnType): string;
 
 { Converts a SQL type string to its DuckDB column type }
 function StringToDuckDBType(const TypeName: string): TDuckDBColumnType;
+
+type
+  TComparison<T> = function(const Left, Right: T): Integer;
 
 implementation
 
@@ -1628,43 +1686,36 @@ begin
 end;
 
 // Add this helper function at the unit level (outside the class)
-procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer);
+procedure QuickSortWithIndices(var Indices: array of Integer; 
+                             CompareFunc: TComparison<Integer>;
+                             Left, Right: Integer);
 var
-  I, J: Integer;
-  Pivot, TempValue: Double;
-  TempIndex: Integer;
+  I, J, Pivot, Temp: Integer;
 begin
   if Left < Right then
   begin
     I := Left;
     J := Right;
-    Pivot := Values[(Left + Right) div 2];
+    Pivot := Indices[(Left + Right) div 2];
     
     repeat
-      while Values[I] < Pivot do Inc(I);
-      while Values[J] > Pivot do Dec(J);
+      while CompareFunc(Indices[I], Pivot) < 0 do Inc(I);
+      while CompareFunc(Indices[J], Pivot) > 0 do Dec(J);
       
       if I <= J then
       begin
-        // Swap values
-        TempValue := Values[I];
-        Values[I] := Values[J];
-        Values[J] := TempValue;
-        
-        // Swap indices
-        TempIndex := Indices[I];
+        Temp := Indices[I];
         Indices[I] := Indices[J];
-        Indices[J] := TempIndex;
-        
+        Indices[J] := Temp;
         Inc(I);
         Dec(J);
       end;
     until I > J;
     
-    if Left < J then
-      QuickSortWithIndices(Values, Indices, Left, J);
-    if I < Right then
-      QuickSortWithIndices(Values, Indices, I, Right);
+    if Left < J then 
+      QuickSortWithIndices(Indices, CompareFunc, Left, J);
+    if I < Right then 
+      QuickSortWithIndices(Indices, CompareFunc, I, Right);
   end;
 end;
 
@@ -2829,5 +2880,543 @@ begin
     end;
   end;
 end;
+
+  // Filter rows based on a condition
+  function TDuckFrame.Filter(Predicate: TFilterFunc): TDuckFrame;
+  var
+    Row: Integer;
+    KeepRow: array of Boolean;
+    NewRowCount: Integer;
+    OldRowIndex: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      // Initialize array to track which rows to keep
+      SetLength(KeepRow, FRowCount);
+      NewRowCount := 0;
+      
+      // Mark rows that satisfy the predicate
+      for Row := 0 to FRowCount - 1 do
+      begin
+        if Predicate(Row) then
+        begin
+          KeepRow[Row] := True;
+          Inc(NewRowCount);
+        end
+        else
+          KeepRow[Row] := False;
+      end;
+      
+      // Create new DataFrame with same structure
+      Result.FRowCount := NewRowCount;
+      SetLength(Result.FColumns, Length(FColumns));
+      
+      // Copy column metadata and allocate space
+      for Col := 0 to High(FColumns) do
+      begin
+        Result.FColumns[Col].Name := FColumns[Col].Name;
+        Result.FColumns[Col].DataType := FColumns[Col].DataType;
+        SetLength(Result.FColumns[Col].Data, NewRowCount);
+      end;
+      
+      // Copy non-null rows
+      OldRowIndex := 0;
+      for Row := 0 to FRowCount - 1 do
+      begin
+        if KeepRow[Row] then
+        begin
+          for Col := 0 to High(FColumns) do
+            Result.FColumns[Col].Data[OldRowIndex] := FColumns[Col].Data[Row];
+          Inc(OldRowIndex);
+        end;
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Select specific rows by index
+  function TDuckFrame.Slice(StartRow, EndRow: Integer): TDuckFrame;
+  var
+    Col, Row: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      Result.FRowCount := EndRow - StartRow + 1;
+      SetLength(Result.FColumns, Length(FColumns));
+      
+      for Col := 0 to High(FColumns) do
+      begin
+        Result.FColumns[Col].Name := FColumns[Col].Name;
+        Result.FColumns[Col].DataType := FColumns[Col].DataType;
+        SetLength(Result.FColumns[Col].Data, Result.FRowCount);
+        
+        for Row := StartRow to EndRow do
+          Result.FColumns[Col].Data[Row - StartRow] := FColumns[Col].Data[Row];
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Transform column values
+  function TDuckFrame.Map(const ColumnName: string; MapFn: TMapFunc): TDuckFrame;
+  var
+    Col: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      Result.FRowCount := FRowCount;
+      SetLength(Result.FColumns, Length(FColumns));
+      
+      Col := FindColumnIndex(ColumnName);
+      if Col = -1 then
+        raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnName]);
+      
+      for Col := 0 to High(FColumns) do
+      begin
+        Result.FColumns[Col].Name := FColumns[Col].Name;
+        Result.FColumns[Col].DataType := FColumns[Col].DataType;
+        SetLength(Result.FColumns[Col].Data, FRowCount);
+        
+        for Row := 0 to FRowCount - 1 do
+          Result.FColumns[Col].Data[Row] := MapFn(FColumns[Col].Data[Row]);
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Sort DataFrame
+function TDuckFrame.Sort(const ColumnNames: array of string; 
+                        const Orders: array of TSortOrder): TDuckFrame;
+var
+  CompareFunc: TComparison<Integer>;
+  SortedIndices: array of Integer;
+  Row, Col, I: Integer;
+begin
+  Result := TDuckFrame.Create;
+  try
+    // Create index array
+    SetLength(SortedIndices, FRowCount);
+    for I := 0 to FRowCount - 1 do
+      SortedIndices[I] := I;
+    
+    // Sort indices based on column names and orders
+    CompareFunc := function(const Left, Right: Integer): Integer
+    var
+      ColIndex: Integer;
+      LeftValue, RightValue: Variant;
+    begin
+      Result := 0;
+      for ColIndex := 0 to High(ColumnNames) do
+      begin
+        LeftValue := FColumns[FindColumnIndex(ColumnNames[ColIndex])].Data[Left];
+        RightValue := FColumns[FindColumnIndex(ColumnNames[ColIndex])].Data[Right];
+        
+        if VarIsNull(LeftValue) and VarIsNull(RightValue) then
+          Continue
+        else if VarIsNull(LeftValue) then
+          Exit(1)
+        else if VarIsNull(RightValue) then
+          Exit(-1);
+          
+        if LeftValue < RightValue then
+          Exit(IIF(Orders[ColIndex] = soAscending, -1, 1))
+        else if LeftValue > RightValue then
+          Exit(IIF(Orders[ColIndex] = soAscending, 1, -1));
+      end;
+    end;
+    
+    // Sort using QuickSort with indices
+    QuickSortWithIndices(SortedIndices, CompareFunc, 0, FRowCount - 1);
+    
+    // Copy data in sorted order
+    Result.FRowCount := FRowCount;
+    SetLength(Result.FColumns, Length(FColumns));
+    
+    for Col := 0 to High(FColumns) do
+    begin
+      Result.FColumns[Col].Name := FColumns[Col].Name;
+      Result.FColumns[Col].DataType := FColumns[Col].DataType;
+      SetLength(Result.FColumns[Col].Data, FRowCount);
+      
+      for Row := 0 to FRowCount - 1 do
+        Result.FColumns[Col].Data[Row] := FColumns[Col].Data[SortedIndices[Row]];
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+  // Group operations
+  function TDuckFrame.GroupBy(const ColumnNames: array of string): TDuckFrame;
+  var
+    GroupKey: string;
+    GroupedData: specialize TDictionary<string, TDuckFrame>;
+    GroupedFrame: TDuckFrame;
+    I, J: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      GroupedData := specialize TDictionary<string, TDuckFrame>.Create;
+      try
+        // Create a new DataFrame for each group
+        for I := 0 to FRowCount - 1 do
+        begin
+          GroupKey := GetGroupKey(I, ColumnNames);
+          if not GroupedData.ContainsKey(GroupKey) then
+            GroupedData.Add(GroupKey, TDuckFrame.Create);
+          
+          GroupedData[GroupKey].AddRow(Slice(I, I).Values[0]);
+        end;
+        
+        // Convert dictionary to array of DataFrames
+        SetLength(Result.FColumns, GroupedData.Count);
+        J := 0;
+        for GroupedFrame in GroupedData.Values do
+        begin
+          Result.FColumns[J].Name := GroupedFrame.GetColumnNames[0];
+          Result.FColumns[J].DataType := GroupedFrame.GetColumn(0).DataType;
+          Result.FColumns[J].Data := GroupedFrame.FColumns[0].Data;
+          Inc(J);
+        end;
+        
+        Result.FRowCount := GroupedData.Count;
+      finally
+        GroupedData.Free;
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Summarize DataFrame
+  function TDuckFrame.Summarize(const AggColumns: array of string; 
+                              const AggFuncs: array of string): TDuckFrame;
+  var
+    SummaryData: specialize TDictionary<string, Variant>;
+    I, J: Integer;
+    GroupedFrame: TDuckFrame;
+    GroupKey: string;
+    AggFunc: TCalcFunc;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      SummaryData := specialize TDictionary<string, Variant>.Create;
+      try
+        // Create a new DataFrame for each group
+        for I := 0 to FRowCount - 1 do
+        begin
+          GroupKey := GetGroupKey(I, ColumnNames);
+          if not SummaryData.ContainsKey(GroupKey) then
+            SummaryData.Add(GroupKey, Variant(TDuckFrame.Create));
+          
+          GroupedFrame := Variant(SummaryData[GroupKey]);
+          
+          for J := 0 to High(AggColumns) do
+          begin
+            AggFunc := TCalcFunc(AggFuncs[J]);
+            GroupedFrame.AddRow([AggFunc(I)]);
+          end;
+        end;
+        
+        // Convert dictionary to array of DataFrames
+        SetLength(Result.FColumns, SummaryData.Count);
+        J := 0;
+        for GroupedFrame in SummaryData.Values do
+        begin
+          Result.FColumns[J].Name := GroupedFrame.GetColumnNames[0];
+          Result.FColumns[J].DataType := GroupedFrame.GetColumn(0).DataType;
+          Result.FColumns[J].Data := GroupedFrame.FColumns[0].Data;
+          Inc(J);
+        end;
+        
+        Result.FRowCount := SummaryData.Count;
+      finally
+        SummaryData.Free;
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Join operations
+  function TDuckFrame.Join(const Other: TDuckFrame; 
+                           const LeftColumns, RightColumns: array of string;
+                           const JoinType: string = 'inner'): TDuckFrame;
+  var
+    Row, Col, DestCol: Integer;
+    SelectedColumns: TStringArray;
+    ColMap: specialize TDictionary<string, Integer>;
+    SourceCol: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    ColMap := specialize TDictionary<string, Integer>.Create;
+    try
+      // Determine which columns to use based on mode
+      case JoinType of
+        'inner':
+          if not HasSameStructure(Other) then
+            raise EDuckDBError.Create('Cannot join DataFrames with different structures')
+          else
+            SelectedColumns := GetColumnNames;
+            
+        'left':
+          if not HasSameStructure(Other) then
+            raise EDuckDBError.Create('Cannot join DataFrames with different structures')
+          else
+            SelectedColumns := GetCommonColumns(Other);
+            
+        'right':
+          if not HasSameStructure(Other) then
+            raise EDuckDBError.Create('Cannot join DataFrames with different structures')
+          else
+            SelectedColumns := Other.GetColumnNames;
+            
+        'outer':
+          if not HasSameStructure(Other) then
+            raise EDuckDBError.Create('Cannot join DataFrames with different structures')
+          else
+            SelectedColumns := GetAllColumns(Other);
+      end;
+      
+      // Setup result structure - simple addition of row counts
+      Result.FRowCount := FRowCount + Other.FRowCount;
+      SetLength(Result.FColumns, Length(SelectedColumns));
+      
+      // Create column mapping
+      for Col := 0 to High(SelectedColumns) do
+      begin
+        Result.FColumns[Col].Name := SelectedColumns[Col];
+        
+        // Determine column type
+        if FindColumnIndex(SelectedColumns[Col]) >= 0 then
+          Result.FColumns[Col].DataType := GetColumnByName(SelectedColumns[Col]).DataType
+        else
+          Result.FColumns[Col].DataType := Other.GetColumnByName(SelectedColumns[Col]).DataType;
+        
+        SetLength(Result.FColumns[Col].Data, Result.FRowCount);
+        ColMap.Add(SelectedColumns[Col], Col);
+      end;
+      
+      // Copy all rows from first DataFrame
+      for Row := 0 to FRowCount - 1 do
+        for Col := 0 to High(SelectedColumns) do
+        begin
+          DestCol := ColMap[SelectedColumns[Col]];
+          SourceCol := FindColumnIndex(SelectedColumns[Col]);
+          
+          if SourceCol >= 0 then
+            Result.FColumns[DestCol].Data[Row] := TryConvertValue(
+              FColumns[SourceCol].Data[Row],
+              FColumns[SourceCol].DataType,
+              Result.FColumns[DestCol].DataType)
+          else
+            Result.FColumns[DestCol].Data[Row] := Null;
+        end;
+      
+      // Copy all rows from second DataFrame
+      for Row := 0 to Other.FRowCount - 1 do
+        for Col := 0 to High(SelectedColumns) do
+        begin
+          DestCol := ColMap[SelectedColumns[Col]];
+          SourceCol := Other.FindColumnIndex(SelectedColumns[Col]);
+          
+          if SourceCol >= 0 then
+            Result.FColumns[DestCol].Data[FRowCount + Row] := TryConvertValue(
+              Other.FColumns[SourceCol].Data[Row],
+              Other.FColumns[SourceCol].DataType,
+              Result.FColumns[DestCol].DataType)
+          else
+            Result.FColumns[DestCol].Data[FRowCount + Row] := Null;
+        end;
+    finally
+      ColMap.Free;
+    end;
+  end;
+
+  // Reshape operations
+  function TDuckFrame.Pivot(const IdColumn, ValueColumn: string): TDuckFrame;
+  var
+    Row, Col, ResultRow: Integer;
+    UniqueValues: specialize THashSet<Variant>;
+    ValueMap: specialize TDictionary<Variant, Integer>;
+    ResultData: array of array of Variant;
+    I, J: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      // Collect unique values for the pivot column
+      UniqueValues := specialize THashSet<Variant>.Create;
+      try
+        for Row := 0 to FRowCount - 1 do
+          UniqueValues.Add(FColumns[FindColumnIndex(IdColumn)].Data[Row]);
+      finally
+        UniqueValues.Free;
+      end;
+      
+      // Create a map for value counts
+      ValueMap := specialize TDictionary<Variant, Integer>.Create;
+      try
+        for Row := 0 to FRowCount - 1 do
+        begin
+          if not ValueMap.ContainsKey(FColumns[FindColumnIndex(ValueColumn)].Data[Row]) then
+            ValueMap.Add(FColumns[FindColumnIndex(ValueColumn)].Data[Row], 0);
+          
+          ValueMap[FColumns[FindColumnIndex(ValueColumn)].Data[Row]] := ValueMap[FColumns[FindColumnIndex(ValueColumn)].Data[Row]] + 1;
+        end;
+        
+        // Create result DataFrame
+        SetLength(ResultData, UniqueValues.Count, ValueMap.Count);
+        
+        for I := 0 to UniqueValues.Count - 1 do
+          for J := 0 to ValueMap.Count - 1 do
+            ResultData[I, J] := Null;
+        
+        for Row := 0 to FRowCount - 1 do
+        begin
+          ResultData[UniqueValues.IndexOf(FColumns[FindColumnIndex(IdColumn)].Data[Row]), ValueMap.IndexOf(FColumns[FindColumnIndex(ValueColumn)].Data[Row])] := FColumns[FindColumnIndex(ValueColumn)].Data[Row];
+        end;
+        
+        // Convert result data to DataFrame
+        SetLength(Result.FColumns, Length(FColumns) + ValueMap.Count);
+        ResultRow := 0;
+        for Col := 0 to High(FColumns) do
+        begin
+          Result.FColumns[Col].Name := FColumns[Col].Name;
+          Result.FColumns[Col].DataType := FColumns[Col].DataType;
+          SetLength(Result.FColumns[Col].Data, FRowCount);
+          
+          for Row := 0 to FRowCount - 1 do
+            Result.FColumns[Col].Data[Row] := ResultData[UniqueValues.IndexOf(FColumns[FindColumnIndex(IdColumn)].Data[Row]), ValueMap.IndexOf(FColumns[FindColumnIndex(ValueColumn)].Data[Row])];
+          
+          Inc(ResultRow);
+        end;
+        
+        for J := 0 to ValueMap.Count - 1 do
+        begin
+          Result.AddColumn(ValueMap.Keys[J], dctInteger);
+          Result.FColumns[Length(Result.FColumns) - 1].Data := ResultData[0, J];
+        end;
+      finally
+        ValueMap.Free;
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Column operations
+  function TDuckFrame.AddCalculatedColumn(const NewColumnName: string; 
+                                         CalcFunc: TCalcFunc): TDuckFrame;
+  var
+    Col: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      Result.FRowCount := FRowCount;
+      SetLength(Result.FColumns, Length(FColumns) + 1);
+      
+      Col := FindColumnIndex(ColumnName);
+      if Col = -1 then
+        raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnName]);
+      
+      Result.FColumns[Length(Result.FColumns) - 1].Name := NewColumnName;
+      Result.FColumns[Length(Result.FColumns) - 1].DataType := FColumns[Col].DataType;
+      SetLength(Result.FColumns[Length(Result.FColumns) - 1].Data, FRowCount);
+      
+      for Row := 0 to FRowCount - 1 do
+        Result.FColumns[Length(Result.FColumns) - 1].Data[Row] := CalcFunc(Row);
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Fluent interface helpers
+function TDuckFrame.Pipe(const NextFrame: TDuckFrame): TDuckFrame;
+begin
+  Result := NextFrame;
+end;
+
+  // String operations on columns
+  function TDuckFrame.Replace(const ColumnName: string; 
+                           const OldValue, NewValue: string): TDuckFrame;
+  var
+    Col: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      Result.FRowCount := FRowCount;
+      SetLength(Result.FColumns, Length(FColumns));
+      
+      Col := FindColumnIndex(ColumnName);
+      if Col = -1 then
+        raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnName]);
+      
+      for Row := 0 to FRowCount - 1 do
+      begin
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          Result.FColumns[Col].Data[Row] := Null
+        else if SameText(VarToStr(FColumns[Col].Data[Row]), OldValue) then
+          Result.FColumns[Col].Data[Row] := NewValue
+        else
+          Result.FColumns[Col].Data[Row] := FColumns[Col].Data[Row];
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Date operations
+  function TDuckFrame.ExtractDatePart(const ColumnName: string; 
+                                     const Part: string): TDuckFrame;
+  var
+    Col: Integer;
+  begin
+    Result := TDuckFrame.Create;
+    try
+      Result.FRowCount := FRowCount;
+      SetLength(Result.FColumns, Length(FColumns));
+      
+      Col := FindColumnIndex(ColumnName);
+      if Col = -1 then
+        raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnName]);
+      
+      for Row := 0 to FRowCount - 1 do
+      begin
+        if VarIsNull(FColumns[Col].Data[Row]) then
+          Result.FColumns[Col].Data[Row] := Null
+        else if VarIsType(FColumns[Col].Data[Row], varDate) then
+          Result.FColumns[Col].Data[Row] := ExtractDatePart(VarToStr(FColumns[Col].Data[Row]), Part)
+        else
+          Result.FColumns[Col].Data[Row] := Null;
+      end;
+    except
+      Result.Free;
+      raise;
+    end;
+  end;
+
+  // Helper for group by operations
+  function TDuckFrame.GetGroupKey(const Row: Integer; const GroupCols: array of string): string;
+  var
+    Key: string;
+    I: Integer;
+  begin
+    Key := '';
+    for I := 0 to High(GroupCols) do
+      Key := Key + VarToStr(FColumns[FindColumnIndex(GroupCols[I])].Data[Row]) + ':';
+    Result := Key;
+  end;
 
 end. 
