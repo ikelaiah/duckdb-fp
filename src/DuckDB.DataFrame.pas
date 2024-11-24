@@ -45,6 +45,7 @@ type
     procedure Commit;
     procedure Rollback;
     
+    // Write to table
     procedure WriteToTable(const DataFrame: TDuckFrame; const TableName: string; const SchemaName: string = 'main');
   end;
 
