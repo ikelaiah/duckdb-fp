@@ -98,8 +98,9 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
-        <Filename Value="DuckDB.FreePascal.Cases.pas"/>
+        <Filename Value="duckdb.freepascal.cases.pas"/>
         <IsPartOfProject Value="True"/>
+        <UnitName Value="DuckDB.FreePascal.Cases"/>
       </Unit>
     </Units>
   </ProjectOptions>

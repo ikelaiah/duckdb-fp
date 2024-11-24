@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, fpcunit, testutils, testregistry, DuckDB.DataFrame,
-  Variants, DuckDB.Wrapper, DateUtils;
+  Variants, DateUtils;
 
 type
   { TDuckDBDataFrameTest }
