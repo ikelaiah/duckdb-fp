@@ -1469,16 +1469,33 @@ end;
 procedure TDuckDBDataFrameTest.TestSortWithNulls;
 var
   Frame, SortedFrame: TDuckFrame;
+  Value: Variant;
 begin
   Frame := CreateSampleFrame;
   try
+    WriteLn('-- Sorting with Nulls');
     SortedFrame := Frame.Sort('Age', True);
+    SortedFrame.Print();
+
     try
       AssertEquals('Should preserve row count', Frame.RowCount, SortedFrame.RowCount);
-      AssertEquals('First age should be 25', 25, Integer(SortedFrame.ValuesByName[0, 'Age']));
-      AssertEquals('Second age should be 30', 30, Integer(SortedFrame.ValuesByName[1, 'Age']));
-      AssertEquals('Third age should be 35', 35, Integer(SortedFrame.ValuesByName[2, 'Age']));
-      AssertTrue('Last row should be null', VarIsNull(SortedFrame.ValuesByName[3, 'Age']));
+      
+      // Check non-null values
+      Value := SortedFrame.ValuesByName[0, 'Age'];
+      AssertFalse('First value should not be null', VarIsNull(Value));
+      AssertEquals('First age should be 25', 25, Integer(Value));
+      
+      Value := SortedFrame.ValuesByName[1, 'Age'];
+      AssertFalse('Second value should not be null', VarIsNull(Value));
+      AssertEquals('Second age should be 30', 30, Integer(Value));
+      
+      Value := SortedFrame.ValuesByName[2, 'Age'];
+      AssertFalse('Third value should not be null', VarIsNull(Value));
+      AssertEquals('Third age should be 35', 35, Integer(Value));
+      
+      // Check null value at the end
+      Value := SortedFrame.ValuesByName[3, 'Age'];
+      AssertTrue('Last row should be null', VarIsNull(Value));
     finally
       SortedFrame.Free;
     end;

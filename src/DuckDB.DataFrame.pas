@@ -7,6 +7,9 @@ interface
 uses
   SysUtils, Classes, Variants, libduckdb, Math, TypInfo, Generics.Collections, DateUtils;
 
+const
+  Infinity: Double = 1.0/0.0;  // Represents positive infinity
+
 type
   EDuckDBError = class(Exception);
 
@@ -234,7 +237,7 @@ type
   end;
 
 { Helper function for sorting }
-procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
+procedure QuickSort(var A: array of Double; iLo, iHi: Integer; Ascending: Boolean = True);
 procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; Left, Right: Integer; Ascending: Boolean = True);
 procedure QuickSortWithStrings(var Values: array of string; var Indices: array of Integer; Left, Right: Integer; Ascending: Boolean = True);
 
@@ -1304,18 +1307,40 @@ begin
                  [TotalMemory, TotalMemory / (1024 * 1024)]));
 end;
 
-procedure QuickSort(var A: array of Double; iLo, iHi: Integer);
+{
+  QuickSort for numeric columns
+  241125
+  - Added ascending/descending parameter
+  - Added null value handling
+  - Added bounds checking
+  - Consistent with QuickSortWithIndices null handling
+Early exit for single-element or empty ranges
+}
+procedure QuickSort(var A: array of Double; iLo, iHi: Integer; Ascending: Boolean = True);
 var
   Lo, Hi: Integer;
   Pivot, T: Double;
+  PivotIsNull: Boolean;
 begin
+  if iLo >= iHi then Exit;
+  
   Lo := iLo;
   Hi := iHi;
   Pivot := A[(Lo + Hi) div 2];
+  PivotIsNull := VarIsNull(Pivot);
 
   repeat
-    while A[Lo] < Pivot do Inc(Lo);
-    while A[Hi] > Pivot do Dec(Hi);
+    if Ascending then
+    begin
+      while (Lo <= iHi) and not VarIsNull(A[Lo]) and (A[Lo] < Pivot) do Inc(Lo);
+      while (Hi >= iLo) and (VarIsNull(A[Hi]) or (A[Hi] > Pivot)) do Dec(Hi);
+    end
+    else
+    begin
+      while (Lo <= iHi) and (VarIsNull(A[Lo]) or (A[Lo] > Pivot)) do Inc(Lo);
+      while (Hi >= iLo) and not VarIsNull(A[Hi]) and (A[Hi] < Pivot) do Dec(Hi);
+    end;
+
     if Lo <= Hi then
     begin
       T := A[Lo];
@@ -1326,8 +1351,8 @@ begin
     end;
   until Lo > Hi;
 
-  if Hi > iLo then QuickSort(A, iLo, Hi);
-  if Lo < iHi then QuickSort(A, Lo, iHi);
+  if Hi > iLo then QuickSort(A, iLo, Hi, Ascending);
+  if Lo < iHi then QuickSort(A, Lo, iHi, Ascending);
 end;
 
 procedure QuickSortWithIndices(var Values: array of Double; var Indices: array of Integer; 
@@ -1336,124 +1361,61 @@ var
   I, J: Integer;
   Pivot, TempValue: Double;
   TempIndex: Integer;
-  IsNull: array of Boolean;
-  NullCount: Integer;
+  PivotIsNull: Boolean;
 begin
-  // First, handle null values by moving them to the end
-  SetLength(IsNull, Length(Values));
-  NullCount := 0;
-  
-  // Mark null values and convert them to 0 for sorting
-  for I := Left to Right do
+  if Left < Right then
   begin
-    IsNull[I] := IsNan(Values[I]);
-    if IsNull[I] then
-    begin
-      Inc(NullCount);
-      Values[I] := 0;
-    end;
-  end;
-  
-  // If we have any non-null values, sort them
-  if (Right - Left + 1) > NullCount then
-  begin
-    if Left < Right then
-    begin
-      I := Left;
-      J := Right;
-      Pivot := Values[(Left + Right) div 2];
+    I := Left;
+    J := Right;
+    
+    // Choose middle element as pivot
+    Pivot := Values[(Left + Right) div 2];
+    PivotIsNull := VarIsNull(Pivot);
+    
+    repeat
+      // For ascending: nulls go to end, so they're "greater" than non-nulls
+      // For descending: nulls go to start, so they're "less" than non-nulls
+      if Ascending then
+      begin
+        while (I <= Right) and 
+              ((VarIsNull(Values[I]) and not PivotIsNull) or 
+               (not VarIsNull(Values[I]) and not PivotIsNull and (Values[I] < Pivot))) do Inc(I);
+        while (J >= Left) and 
+              ((not VarIsNull(Values[J]) and PivotIsNull) or 
+               (not VarIsNull(Values[J]) and not PivotIsNull and (Values[J] > Pivot))) do Dec(J);
+      end
+      else
+      begin
+        while (I <= Right) and 
+              ((not VarIsNull(Values[I]) and PivotIsNull) or 
+               (not VarIsNull(Values[I]) and not PivotIsNull and (Values[I] > Pivot))) do Inc(I);
+        while (J >= Left) and 
+              ((VarIsNull(Values[J]) and not PivotIsNull) or 
+               (not VarIsNull(Values[J]) and not PivotIsNull and (Values[J] < Pivot))) do Dec(J);
+      end;
       
-      repeat
-        if Ascending then
-        begin
-          while (I <= Right) and (not IsNull[I]) and (Values[I] < Pivot) do Inc(I);
-          while (J >= Left) and (not IsNull[J]) and (Values[J] > Pivot) do Dec(J);
-        end
-        else
-        begin
-          while (I <= Right) and (not IsNull[I]) and (Values[I] > Pivot) do Inc(I);
-          while (J >= Left) and (not IsNull[J]) and (Values[J] < Pivot) do Dec(J);
-        end;
+      if I <= J then
+      begin
+        // Swap values
+        TempValue := Values[I];
+        Values[I] := Values[J];
+        Values[J] := TempValue;
         
-        if I <= J then
-        begin
-          // Skip if either value is null
-          if not (IsNull[I] or IsNull[J]) then
-          begin
-            // Swap values
-            TempValue := Values[I];
-            Values[I] := Values[J];
-            Values[J] := TempValue;
-            
-            // Swap indices
-            TempIndex := Indices[I];
-            Indices[I] := Indices[J];
-            Indices[J] := TempIndex;
-            
-            // Swap null flags
-            TempValue := Ord(IsNull[I]);
-            IsNull[I] := IsNull[J];
-            IsNull[J] := Boolean(Round(TempValue));
-          end;
-          
-          Inc(I);
-          Dec(J);
-        end;
-      until I > J;
-      
-      // Recursively sort non-null portions
-      if Left < J then
-        QuickSortWithIndices(Values, Indices, Left, J, Ascending);
-      if I < Right then
-        QuickSortWithIndices(Values, Indices, I, Right, Ascending);
-    end;
-  end;
-  
-  // Move null values to the end (or beginning if descending)
-  if NullCount > 0 then
-  begin
-    if Ascending then
-    begin
-      // Move nulls to end
-      J := Right;
-      for I := Right downto Left do
-      begin
-        if not IsNull[I] then
-        begin
-          // Swap with rightmost position
-          TempValue := Values[I];
-          Values[I] := Values[J];
-          Values[J] := TempValue;
-          
-          TempIndex := Indices[I];
-          Indices[I] := Indices[J];
-          Indices[J] := TempIndex;
-          
-          Dec(J);
-        end;
+        // Swap indices
+        TempIndex := Indices[I];
+        Indices[I] := Indices[J];
+        Indices[J] := TempIndex;
+        
+        Inc(I);
+        Dec(J);
       end;
-    end
-    else
-    begin
-      // Move nulls to beginning for descending sort
-      J := Left;
-      for I := Left to Right do
-      begin
-        if not IsNull[I] then
-        begin
-          // Swap with leftmost position
-          TempValue := Values[I];
-          Values[I] := Values[J];
-          Values[J] := TempValue;
-          
-          TempIndex := Indices[I];
-          Indices[I] := Indices[J];
-          Indices[J] := TempIndex;
-          
-          Inc(J);
-        end;
-      end;
-    end;
+    until I > J;
+    
+    // Recursively sort both partitions
+    if Left < J then
+      QuickSortWithIndices(Values, Indices, Left, J, Ascending);
+    if I < Right then
+      QuickSortWithIndices(Values, Indices, I, Right, Ascending);
   end;
 end;
 
@@ -2810,11 +2772,11 @@ begin
           end;
         else
           begin
-            // Convert to numeric for all other types
+           // Convert to numeric for all other types
             SetLength(RealValues, FRowCount);
             for J := 0 to FRowCount - 1 do
               if VarIsNull(FColumns[ColIndex].Data[Indices[J]]) then
-                RealValues[J] := 0
+                RealValues[J] := Infinity  // Use Infinity for ascending sort to put nulls at end
               else
                 RealValues[J] := VarAsType(FColumns[ColIndex].Data[Indices[J]], varDouble);
             // Sort numeric RealValues
