@@ -169,14 +169,14 @@ type
     const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 
   public
-    { 1. Constructors: More Constructors }
+    { 1. Constructors & Destructor }
     constructor Create;
     constructor CreateBlank(const AColumnNames: array of string;
                            const AColumnTypes: array of TDuckDBColumnType); overload;
-    constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;
     constructor CreateFromCSV(const AFileName: string; 
                               const AHasHeaders: Boolean = True;
                               const ADelimiter: Char = ','); overload;
+    constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;
     constructor CreateFromParquet(const AFileName: string); overload;
     constructor CreateFromParquet(const Files: array of string); overload;
     destructor Destroy; override;

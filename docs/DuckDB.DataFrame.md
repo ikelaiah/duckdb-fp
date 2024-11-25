@@ -7,12 +7,13 @@
   - [TDuckFrame](#tduckframe)
     - [Properties](#properties)
     - [Column Information (TDuckDBColumn)](#column-information-tduckdbcolumn)
-    - [Data Types](#data-types)
-    - [Date/Time Handling](#datetime-handling)
-      - [Date Values (dctDate)](#date-values-dctdate)
-      - [Time Values (dctTime)](#time-values-dcttime)
-      - [Timestamp Values (dctTimestamp)](#timestamp-values-dcttimestamp)
-    - [Constructor Methods](#constructor-methods)
+      - [Data Types](#data-types)
+      - [Date/Time Handling](#datetime-handling)
+        - [Date Values (dctDate)](#date-values-dctdate)
+        - [Time Values (dctTime)](#time-values-dcttime)
+        - [Timestamp Values (dctTimestamp)](#timestamp-values-dcttimestamp)
+  - [TDuckFrame Methods](#tduckframe-methods)
+    - [1. Constructor and Destructor](#1-constructor-and-destructor)
       - [Advanced Examples (CSV)](#advanced-examples-csv)
       - [Common Issues and Solutions (CSV)](#common-issues-and-solutions-csv)
       - [Best Practices using Constructors](#best-practices-using-constructors)
@@ -36,13 +37,6 @@
     - [Notes](#notes)
     - [Missing Data Handling](#missing-data-handling)
     - [Unique Value Analysis](#unique-value-analysis)
-      - [Filter](#filter)
-      - [Sort](#sort)
-      - [GroupBy](#groupby)
-      - [Sample](#sample)
-      - [Column Operations](#column-operations)
-      - [Statistical Operations](#statistical-operations)
-      - [Join Operations](#join-operations)
 
 ## TDuckFrame
 
@@ -108,7 +102,7 @@ property ValuesByName[Row: Integer; ColName: string]: Variant;
 | `DataType` | `TDuckDBColumnType` | Column data type |
 | `Data` | `array of Variant` | Column values |
 
-### Data Types
+#### Data Types
 
 ```pascal
   TDuckDBColumnType = (
@@ -132,23 +126,23 @@ property ValuesByName[Row: Integer; ColName: string]: Variant;
   );
 ```
 
-### Date/Time Handling
+#### Date/Time Handling
 
 The DataFrame supports three date/time-related types:
 
-#### Date Values (dctDate)
+##### Date Values (dctDate)
 - Stored internally as TDate (integer part of TDateTime)
 - Default/null value is 0 (30/12/1899)
 - Displayed in 'dd/mm/yyyy' format
 - Access via `TDuckDBColumn.AsDateArray`
 
-#### Time Values (dctTime)
+##### Time Values (dctTime)
 - Stored internally as TTime (fractional part of TDateTime)
 - Default/null value is 0 (00:00:00)
 - Displayed in 'hh:nn:ss' format
 - Access via `TDuckDBColumn.AsTimeArray`
 
-#### Timestamp Values (dctTimestamp)
+##### Timestamp Values (dctTimestamp)
 - Stored internally as TDateTime (full date and time)
 - Default/null value is 0 (30/12/1899 00:00:00)
 - Displayed in 'dd/mm/yyyy hh:nn:ss' format
@@ -174,7 +168,9 @@ begin
 end;
 ```
 
-### Constructor Methods
+## TDuckFrame Methods
+
+### 1. Constructor and Destructor
 
 ```pascal
 constructor Create;
@@ -197,6 +193,22 @@ constructor CreateFromDuckDB(const AFileName: string; const ATableName: string);
   - Query execution fails
 
 ```pascal
+constructor CreateBlank(const AColumnNames: array of string;
+                       const AColumnTypes: array of TDuckDBColumnType);
+```
+- Creates an empty DataFrame with predefined structure
+- Parameters:
+  - `AColumnNames`: Array of column names
+  - `AColumnTypes`: Array of column data types
+- Features:
+  - Initializes DataFrame with specified columns but no rows
+  - Ready for data addition via AddRow
+- Raises `EDuckDBError` if:
+  - Column names array and types array have different lengths
+  - Duplicate column names exist
+
+
+```pascal
 constructor CreateFromCSV(const AFileName: string; 
                          AHasHeaders: Boolean = True;
                          const ADelimiter: Char = ',');
@@ -214,22 +226,6 @@ constructor CreateFromCSV(const AFileName: string;
   - File not found
   - Invalid file format
   - Database or connection errors
-
-
-```pascal
-constructor CreateBlank(const AColumnNames: array of string;
-                       const AColumnTypes: array of TDuckDBColumnType);
-```
-- Creates an empty DataFrame with predefined structure
-- Parameters:
-  - `AColumnNames`: Array of column names
-  - `AColumnTypes`: Array of column data types
-- Features:
-  - Initializes DataFrame with specified columns but no rows
-  - Ready for data addition via AddRow
-- Raises `EDuckDBError` if:
-  - Column names array and types array have different lengths
-  - Duplicate column names exist
 
 Example usage:
 
@@ -276,7 +272,88 @@ begin
 end;
 ```
 
-Note: All constructors create a new instance that must be freed when no longer needed.
+
+```pascal
+constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;
+``` 
+- Creates a DataFrame by connecting to a DuckDB database and loading a specific table.
+- Parameters:
+  - `ADatabase`: Path to the DuckDB database file.
+  - `ATableName`: Name of the table to load into the DataFrame.
+- Raises `EDuckDBError` if:
+  - Database connection fails.
+  - Table does not exist in the specified database.
+  - Query execution encounters an error.
+    
+Example Usage:
+    
+```pascal
+// Create from DuckDB with database and table name
+var
+  DF4: TDuckFrame;
+begin
+  DF4 := TDuckFrame.CreateFromDuckDB('analytics.db', 'transactions');
+  try
+    // Use DF4...
+    DF4.Print;
+  finally
+    DF4.Free;
+  end;
+end;
+```
+
+```pascal
+constructor CreateFromParquet(const AFileName: string); overload;
+constructor CreateFromParquet(const Files: array of string); overload;
+``` 
+
+- Creates a DataFrame by loading data from Parquet files.
+- Parameters:
+  - `AFileName`: Path to the Parquet file to load into the DataFrame.
+  - `Files`: Array of paths to Parquet files to load and combine into the DataFrame.
+- Raises `EDuckDBError` if:
+  - Any specified file does not exist or cannot be accessed.
+  - Any file is not a valid Parquet file or cannot be parsed.
+
+Example Usage:
+
+```pascal
+// Create from a single Parquet file
+var
+  DF5: TDuckFrame;
+begin
+  DF5 := TDuckFrame.CreateFromParquet('data/sales.parquet');
+  try
+    // Use DF5...
+    DF5.Print;
+  finally
+    DF5.Free;
+  end;
+end;
+
+// Create from multiple Parquet files
+var
+  DF6: TDuckFrame;
+  ParquetFiles: array of string;
+begin
+  
+  SetLength(ParquetFiles, 2);
+  ParquetFiles[0] := 'data/sales_january.parquet';
+  ParquetFiles[1] := 'data/sales_february.parquet';
+
+  DF6 := TDuckFrame.CreateFromParquet(ParquetFiles);
+  try
+    // Use DF6...
+    DF6.Print;
+  finally
+    DF6.Free;
+  end;
+end;
+```
+
+> [!NOTE] 
+> 
+> All constructors create a new instance that must be freed when no longer needed.
 
 #### Advanced Examples (CSV)
 
@@ -847,192 +924,3 @@ function UniqueCounts(const ColumnName: string): TDuckFrame;
 - Parameters:
   - `ColumnName`: Column to analyze
 - Returns DataFrame with value counts
-
-#### Filter
-```pascal
-function Filter(const Condition: TFilterFunc): TDuckFrame;
-```
-- Creates a new DataFrame containing only rows that satisfy the condition
-- Parameters:
-  - `Condition`: Function that takes row index and returns boolean
-- Returns filtered DataFrame
-- Example:
-```pascal
-// Keep only rows where Age > 30
-Filtered := Frame.Filter(function(Row: Integer): Boolean
-  begin
-    Result := Integer(Frame.ValuesByName[Row, 'Age']) > 30;
-  end);
-```
-
-#### Sort
-```pascal
-function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame;
-```
-- Creates a new DataFrame with rows sorted by specified column
-- Parameters:
-  - `ColumnName`: Column to sort by
-  - `Ascending`: Sort direction (True = ascending, False = descending)
-- Returns sorted DataFrame
-
-#### GroupBy
-```pascal
-function GroupBy(const ColumnNames: array of string): TDuckFrame;
-```
-- Groups data by specified columns
-- Parameters:
-  - `ColumnNames`: Array of column names to group by
-- Returns DataFrame with grouped statistics
-- Commonly used with aggregation functions
-
-#### Sample
-```pascal
-function Sample(Count: Integer): TDuckFrame; overload;
-function Sample(Percentage: Double): TDuckFrame; overload;
-```
-- Creates new DataFrame with random sample of rows
-- Two overloads:
-  - By count: Exact number of rows
-  - By percentage: Percentage of total rows (0.0 to 100.0)
-- Returns sampled DataFrame
-
-#### Column Operations
-```pascal
-function RenameColumn(const OldName, NewName: string): TDuckFrame;
-```
-- Creates new DataFrame with renamed column
-- Parameters:
-  - `OldName`: Current column name
-  - `NewName`: New column name
-- Returns DataFrame with renamed column
-
-```pascal
-function DropColumns(const ColumnNames: array of string): TDuckFrame;
-```
-- Creates new DataFrame with specified columns removed
-- Parameters:
-  - `ColumnNames`: Array of column names to remove
-- Returns DataFrame without specified columns
-
-#### Statistical Operations
-```pascal
-function Quantile(const ColumnName: string; 
-                 const Quantiles: array of Double): TDuckFrame;
-```
-- Calculates quantiles for numeric column
-- Parameters:
-  - `ColumnName`: Column to analyze
-  - `Quantiles`: Array of quantile values (0.0 to 1.0)
-- Returns DataFrame with quantile values
-- Raises EDuckDBError for non-numeric columns
-
-```pascal
-function ValueCounts(const ColumnName: string; 
-                    Normalize: Boolean = False): TDuckFrame;
-```
-- Counts frequency of unique values in column
-- Parameters:
-  - `ColumnName`: Column to analyze
-  - `Normalize`: If True, returns proportions instead of counts
-- Returns DataFrame with value frequencies
-
-#### Join Operations
-```pascal
-function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
-```
-- Combines two DataFrames based on common columns
-- Parameters:
-  - `Other`: DataFrame to join with
-  - `Mode`: Join type (Inner, Left, Right, Full)
-- Returns joined DataFrame
-- Join modes:
-  - `jmInner`: Only matching rows
-  - `jmLeftJoin`: All rows from left, matching from right
-  - `jmRightJoin`: All rows from right, matching from left
-  - `jmFullJoin`: All rows from both frames
-- Example:
-```pascal
-var
-  Frame1, Frame2, JoinedFrame: TDuckFrame;
-begin
-  Frame1 := TDuckFrame.CreateBlank(['ID', 'Name', 'Age'], 
-    [dctInteger, dctString, dctInteger]);
-  Frame1.AddRow([1, 'John', 30]);
-  Frame1.AddRow([2, 'Jane', 25]);
-  
-  // Create second frame
-  Frame2 := TDuckFrame.CreateBlank(['ID', 'City', 'Salary'], 
-    [dctInteger, dctString, dctDouble]);
-  Frame2.AddRow([1, 'New York', 75000.0]);
-  Frame2.AddRow([3, 'Boston', 80000.0]);
-  
-    try
-    // Test inner join
-    JoinedFrame := Frame1.Join(Frame2, jmInner);
-    try
-      AssertEquals('Should have 1 row for inner join', 1, JoinedFrame.RowCount);
-      AssertEquals('Should have 4 columns', 4, JoinedFrame.ColumnCount);
-      AssertEquals('Should match on ID=1', 'John', 
-        string(JoinedFrame.ValuesByName[0, 'Name']));
-      AssertEquals('Should include city', 'New York', 
-        string(JoinedFrame.ValuesByName[0, 'City']));
-    finally
-      JoinedFrame.Free;
-    end;
-    
-    // Test left join
-    JoinedFrame := Frame1.Join(Frame2, jmLeftJoin);
-    try
-      AssertEquals('Should have 2 rows for left join', 2, JoinedFrame.RowCount);
-      AssertTrue('Should have null salary for unmatched row', 
-        VarIsNull(JoinedFrame.ValuesByName[1, 'Salary']));
-    finally
-      JoinedFrame.Free;
-    end;
-  finally
-    Frame1.Free;
-    Frame2.Free;
-    end;
-end;
-  
-procedure TDuckDBDataFrameTest.TestJoinFailsWithNoCommonColumns;
-var
-  Frame1, Frame2: TDuckFrame;
-begin
-  Frame1 := TDuckFrame.CreateBlank(['Name', 'Age'], [dctString, dctInteger]);
-  Frame2 := TDuckFrame.CreateBlank(['City', 'Salary'], [dctString, dctDouble]);
-  
-    try
-    try
-      Frame1.Join(Frame2);
-      Fail('Should raise exception when no common columns exist');
-    except
-      on E: EDuckDBError do
-        AssertTrue('Should mention no common columns', 
-          Pos('No common columns', E.Message) > 0);
-    end;
-  finally
-    Frame1.Free;
-    Frame2.Free;
-    end;
-end;
-  try
-procedure TDuckDBDataFrameTest.TestContains;
-var
-  Frame: TDuckFrame;
-  Arr: array of string;
-begin
-  Frame := CreateSampleFrame;
-  try
-    SetLength(Arr, 2);
-    Arr[0] := 'Name';
-    Arr[1] := 'Age';
-    
-    AssertTrue('Should find existing column', Contains(Arr, 'Name'));
-    AssertFalse('Should not find non-existent column', Contains(Arr, 'NonExistent'));
-  finally
-    Frame.Free;
-  end;
-end;
-```
-
