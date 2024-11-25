@@ -230,11 +230,12 @@ type
 
     { 5.2. Statistical Analysis }
     function ValueCounts(const ColumnName: string; Normalize: Boolean = False): TDuckFrame;
+    function UniqueCounts(const ColumnName: string): TDuckFrame; // Frequency of each unique value
+    function GroupBy(const ColumnNames: array of string): TDuckFrame;
     function Quantile(const ColumnName: string; const Quantiles: array of Double): TDuckFrame;
     function CorrPearson: TDuckFrame;
     function CorrSpearman: TDuckFrame;
-    function UniqueCounts(const ColumnName: string): TDuckFrame; // Frequency of each unique value
-    function GroupBy(const ColumnNames: array of string): TDuckFrame;
+    
     
     { 6. Data Combination }
     function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;

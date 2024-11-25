@@ -17,8 +17,33 @@
       - [Advanced Examples (CSV)](#advanced-examples-csv)
       - [Common Issues and Solutions (CSV)](#common-issues-and-solutions-csv)
       - [Best Practices using Constructors](#best-practices-using-constructors)
-    - [Data Access Methods](#data-access-methods)
-    - [Data Manipulation Methods](#data-manipulation-methods)
+    - [2. Data Access Methods](#2-data-access-methods)
+    - [3. Properties](#3-properties)
+    - [4. Data Manipulation Methods](#4-data-manipulation-methods)
+      - [4.1. Row Operations](#41-row-operations)
+      - [4.1. Data Cleaning: Methods for handling missing data](#41-data-cleaning-methods-for-handling-missing-data)
+      - [4.2. Column Operations](#42-column-operations)
+      - [4.3. Filtering and sorting](#43-filtering-and-sorting)
+    - [5. Data Analysis](#5-data-analysis)
+      - [5.1. Data Preview: Methods for inspecting data samples](#51-data-preview-methods-for-inspecting-data-samples)
+      - [5.2. Statistical Analysis](#52-statistical-analysis)
+        - [5.2.1. ValueCounts](#521-valuecounts)
+        - [5.2.2. UniqueCounts](#522-uniquecounts)
+        - [5.2.3. GroupBy](#523-groupby)
+        - [5.2.4. Quantile](#524-quantile)
+        - [5.2.5. PearsonCorrelation](#525-pearsoncorrelation)
+        - [5.2.6. SpearmanCorrelation](#526-spearmancorrelation)
+      - [5.2.7. When to use each correlation method](#527-when-to-use-each-correlation-method)
+    - [6. Data Combination](#6-data-combination)
+      - [6.1. Join](#61-join)
+      - [6.2. Unions](#62-unions)
+    - [Examples](#examples)
+    - [Implementation Details](#implementation-details)
+    - [Type Conversion](#type-conversion)
+    - [Notes](#notes)
+    - [7. Input and Output Methods](#7-input-and-output-methods)
+    - [8. Display \& Descriptive Analysis](#8-display--descriptive-analysis)
+    - [9. Helper Methods](#9-helper-methods)
     - [Output Methods](#output-methods)
     - [Data Analysis Methods](#data-analysis-methods)
     - [Histogram Generation](#histogram-generation)
@@ -26,17 +51,6 @@
   - [File Operations](#file-operations)
     - [CSV Export](#csv-export)
   - [DataFrame Combination Methods](#dataframe-combination-methods)
-    - [DataFrame Combination Operations](#dataframe-combination-operations)
-      - [Union Modes](#union-modes)
-      - [Union](#union)
-      - [UnionAll](#unionall)
-      - [Distinct](#distinct)
-    - [Examples](#examples)
-    - [Implementation Details](#implementation-details)
-    - [Type Conversion](#type-conversion)
-    - [Notes](#notes)
-    - [Missing Data Handling](#missing-data-handling)
-    - [Unique Value Analysis](#unique-value-analysis)
 
 ## TDuckFrame
 
@@ -360,7 +374,7 @@ end;
 ```pascal
 program CSVExamples;
 
-{$mode objfpc}{$H+}
+{$mode objfpc}{$H+}{$J-}
 
 uses
   SysUtils, DuckDB.DataFrame;
@@ -483,7 +497,33 @@ end;
 4. Preview the data to ensure it loaded correctly
 5. Use appropriate error handling
 
-### Data Access Methods
+### 2. Data Access Methods
+
+```pascal
+function GetColumn(Index: Integer): TDuckDBColumn;
+```
+- Returns column information by index
+- Raises exception if index out of bounds
+
+
+```pascal
+function GetColumnNames: TStringArray;
+```
+- Returns an array containing the names of all columns in the DataFrame
+- Useful for retrieving column names without accessing individual columns
+
+```pascal
+function GetColumn(Index: Integer): TDuckDBColumn;
+```
+- Returns the column information at the specified index.
+- Raises an exception if the index is out of bounds.
+
+
+```pascal
+function GetColumnByName(const Name: string): TDuckDBColumn;
+```
+- Returns column information by name
+- Raises exception if column not found
 
 ```pascal
 function FindColumnIndex(const Name: string): Integer;
@@ -492,23 +532,167 @@ function FindColumnIndex(const Name: string): Integer;
 - Returns -1 if column not found
 
 ```pascal
-function GetColumn(Index: Integer): TDuckDBColumn;
+procedure SetValue(const ARow: Integer; const AColumnName: string; const AValue: Variant);
 ```
-- Returns column information by index
-- Raises exception if index out of bounds
+- Sets the value of the specified column in the given row.
+- Parameters:
+  - `ARow`: The index of the row to update.
+  - `AColumnName`: The name of the column to set the value in.
+  - `AValue`: The new value to assign to the specified cell.
+- Raises:
+  - An exception if `ARow` is out of bounds.
+  - An exception if `AColumnName` does not exist in the DataFrame.
+
+
+### 3. Properties
 
 ```pascal
-function GetColumnByName(const Name: string): TDuckDBColumn;
+property RowCount: Integer read FRowCount;
 ```
-- Returns column information by name
-- Raises exception if column not found
 
-### Data Manipulation Methods
+- Gets the number of rows in the DataFrame.
+
+```pascal
+property ColumnCount: Integer read GetColumnCount;
+```
+
+- Retrieves the total number of columns in the DataFrame.
+
+```pascal
+property Columns[Index: Integer]: TDuckDBColumn read GetColumn;
+```
+
+- Accesses the column information by its index.
+- Raises an exception if the index is out of bounds.
+
+```pascal
+property ColumnsByName[const Name: string]: TDuckDBColumn read GetColumnByName;
+```
+
+- Accesses the column information by its name.
+- Raises an exception if the column name does not exist.
+
+```pascal
+property Values[Row, Col: Integer]: Variant read GetValue;
+```
+
+- Retrieves the value at the specified row and column indices.
+- Raises an exception if either index is out of bounds.
+
+```pascal
+property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
+```
+
+- Retrieves the value at the specified row and column name.
+- Raises an exception if the row index or column name is invalid.
+- Default property for accessing values by name.
+
+
+### 4. Data Manipulation Methods
+
+#### 4.1. Row Operations
 
 ```pascal
 procedure Clear;
 ```
 - Removes all data from the DataFrame
+
+```pascal
+procedure AddRow(const AValues: array of Variant);
+```
+- Adds a new row to the DataFrame
+- Parameters:
+  - `AValues`: Array of values matching column count and types
+- Automatic type conversion is attempted
+- Raises `EDuckDBError` if value count doesn't match column count
+
+#### 4.1. Data Cleaning: Methods for handling missing data
+
+```pascal
+function DropNA: TDuckFrame;
+```
+- Creates new DataFrame with rows containing any NULL values removed
+- Returns new DataFrame with complete cases only
+
+```pascal
+function FillNA(const Value: Variant): TDuckFrame;
+```
+- Creates new DataFrame with NULL values replaced
+- Parameters:
+  - `Value`: Value to use for replacement
+- Returns new DataFrame with filled values
+
+
+#### 4.2. Column Operations
+
+```pascal
+procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
+```
+- Adds a new column to the DataFrame.
+- Parameters:
+  - `AName`: The name of the new column.
+  - `AType`: The data type of the new column.
+- Raises:
+  - An exception if a column with the same name already exists.
+
+```pascal
+function DropColumns(const ColumnNames: array of string): TDuckFrame;
+```
+- Removes the specified columns from the DataFrame.
+- Parameters:
+  - `ColumnNames`: An array of column names to be dropped.
+- Returns:
+  - A new `TDuckFrame` instance with the specified columns removed.
+- Raises:
+  - An exception if any of the specified column names do not exist.
+
+```pascal
+function RenameColumn(const OldName, NewName: string): TDuckFrame;
+```
+- Renames a column in the DataFrame.
+- Parameters:
+  - `OldName`: The current name of the column to be renamed.
+  - `NewName`: The new name for the column.
+- Returns:
+  - A new `TDuckFrame` instance with the column renamed.
+- Raises:
+  - An exception if the `OldName` does not exist or if `NewName` already exists.
+
+
+```pascal
+function Select(const Columns: array of string): TDuckFrame;
+```
+- Returns a new DataFrame with only the specified columns
+- Caller must free the returned DataFrame
+
+
+#### 4.3. Filtering and sorting
+
+```pascal
+function Filter(const ColumnName: string; const Value: Variant): TDuckFrame; overload;
+```
+- Filters the DataFrame to include only rows where the specified column matches the given value.
+    
+```pascal
+function Filter(const ColumnName: string; const CompareOp: string; const Value: Variant): TDuckFrame; overload;
+```
+- Filters the DataFrame based on a comparison operator (e.g., '=', '<', '>', 'LIKE') applied to the specified column.
+    
+```pascal
+function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame; overload;
+```
+- Sorts the DataFrame by the specified column in ascending or descending order.
+    
+```pascal
+function Sort(const ColumnNames: array of string; const Ascending: array of Boolean): TDuckFrame; overload;
+```
+- Sorts the DataFrame by multiple columns, each with its own ascending or descending order.
+
+
+### 5. Data Analysis
+
+#### 5.1. Data Preview: Methods for inspecting data samples
+
 
 ```pascal
 function Head(Count: Integer = 5): TDuckFrame;
@@ -524,11 +708,372 @@ function Tail(Count: Integer = 5): TDuckFrame;
 - Default count is 5
 - Caller must free the returned DataFrame
 
+
 ```pascal
-function Select(const Columns: array of string): TDuckFrame;
+function Sample(Count: Integer): TDuckFrame; overload;
 ```
-- Returns a new DataFrame with only the specified columns
+- Returns a new `TDuckFrame` containing a random sample of the specified number of rows.
+- Caller must free the returned `TDuckFrame`.
+- **Example:**
+
+  ```pascal
+  var
+    SampledFrame: TDuckFrame;
+  begin
+    SampledFrame := OriginalFrame.Sample(100); // Sample 100 random rows
+    SampledFrame.Print;
+    SampledFrame.Free;
+  end;
+  ```
+
+```pascal
+function Sample(Percentage: Double): TDuckFrame; overload;
+```
+- Returns a new `TDuckFrame` containing a random sample based on the specified percentage of rows.
+- Caller must free the returned `TDuckFrame`.
+- **Example:**
+
+  ```pascal
+  var
+    SampledFrame: TDuckFrame;
+  begin
+    SampledFrame := OriginalFrame.Sample(0.10); // Sample 10% of rows
+    SampledFrame.Print;
+    SampledFrame.Free;
+  end;
+  ```
+
+#### 5.2. Statistical Analysis
+
+##### 5.2.1. ValueCounts
+
+```pascal
+function ValueCounts(const ColumnName: string; Normalize: Boolean = False): TDuckFrame;
+```
+- Returns a new `TDuckFrame` containing the count of unique values in the specified column.
+- If `Normalize` is set to `True`, the counts are converted to proportions.
+- Useful for understanding the distribution of categorical data.
+- Caller must free the returned `TDuckFrame`.
+- **Example:**
+   
+  ```pascal
+  var
+    Counts: TDuckFrame;
+  begin
+    Counts := DF.ValueCounts('department', True); // Get normalized counts
+    try
+      Counts.Print;
+    finally
+      Counts.Free;
+    end;
+  end;
+  ```
+
+##### 5.2.2. UniqueCounts
+
+```pascal
+function UniqueCounts(const ColumnName: string): TDuckFrame;
+```
+- Returns a new `TDuckFrame` with the frequency of each unique value in the specified column.
+- Useful for identifying the number of occurrences of each distinct value.
+- Caller must free the returned `TDuckFrame`.
+- **Example:**
+    
+  ```pascal
+  var
+    UniqueFreq: TDuckFrame;
+  begin
+    UniqueFreq := DF.UniqueCounts('name'); // Get frequency counts for 'name' column
+    try
+      UniqueFreq.Print;
+    finally
+      UniqueFreq.Free;
+    end;
+  end;
+  ```
+
+##### 5.2.3. GroupBy
+```pascal
+function GroupBy(const ColumnNames: array of string): TDuckFrame;
+```
+- Groups the DataFrame by the specified columns and returns a new `TDuckFrame` with aggregated results.
+- Can be used in conjunction with aggregation functions like `Sum`, `Mean`, etc.
+- Useful for summarizing data based on categorical grouping.
+- Caller must free the returned `TDuckFrame`.
+- **Example:**
+    
+  ```pascal
+  var
+    GroupedFrame: TDuckFrame;
+  begin
+    GroupedFrame := DF.GroupBy(['department']);
+    try
+      GroupedFrame.Sum('salary').Print; // Sum salaries per department
+    finally
+      GroupedFrame.Free;
+    end;
+  end;
+  ```
+
+##### 5.2.4. Quantile
+
+```pascal
+function Quantile(const ColumnName: string; const Quantiles: array of Double): TDuckFrame;
+```
+- Calculates the specified quantiles for a numeric column.
+- Returns a new `TDuckFrame` containing the quantile values.
+- Useful for statistical analysis and understanding data distribution.
+- Caller must free the returned `TDuckFrame`.
+- **Example:**
+
+  ```pascal
+  var
+    QuantilesDF: TDuckFrame;
+  begin
+    QuantilesDF := DF.Quantile('age', [0.25, 0.5, 0.75]); // Calculate 25th, 50th, 75th percentiles
+    try
+      QuantilesDF.Print;
+    finally
+      QuantilesDF.Free;
+    end;
+  end;
+  ```
+
+##### 5.2.5. PearsonCorrelation
+
+```pascal
+function CorrPearson: TDuckFrame;
+```
+- Calculates the Pearson correlation matrix for all numeric columns
+- Returns a new DataFrame containing the correlation coefficients
+- Measures linear correlation between variables
+- Best for linear relationships between variables
+- Sensitive to outliers
 - Caller must free the returned DataFrame
+
+##### 5.2.6. SpearmanCorrelation
+
+```pascal
+function CorrSpearman: TDuckFrame;
+```
+- Calculates the Spearman rank correlation matrix for all numeric columns
+- Returns a new DataFrame containing the correlation coefficients
+- Measures monotonic relationships (including non-linear)
+- More robust to outliers than Pearson correlation
+- Better for ordinal data and non-linear relationships
+- Caller must free the returned DataFrame
+
+**Example usage**:
+
+```pascal
+var
+  PearsonCorr, SpearmanCorr: TDuckFrame;
+begin
+  // Calculate Pearson correlation
+  PearsonCorr := DF.CorrPearson;
+  try
+    WriteLn('Pearson Correlation:');
+    PearsonCorr.Print;
+  finally
+    PearsonCorr.Free;
+  end;
+  
+  // Calculate Spearman correlation
+  SpearmanCorr := DF.CorrSpearman;
+  try
+    WriteLn('Spearman Correlation:');
+    SpearmanCorr.Print;
+  finally
+    SpearmanCorr.Free;
+  end;
+end;
+```
+
+#### 5.2.7. When to use each correlation method
+
+**Pearson Correlation:**
+- Variables have linear relationships
+- Data is normally distributed
+- No significant outliers
+- Variables are continuous
+
+**Spearman Correlation:**
+- Non-linear but monotonic relationships
+- Ordinal data
+- Presence of outliers
+- Non-normal distributions
+- More robust general-purpose correlation
+
+
+
+
+### 6. Data Combination
+
+#### 6.1. Join
+
+```pascal
+function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
+```
+- Combines two `TDuckFrame` instances based on a specified join mode
+- Supports various join types similar to SQL joins
+- **Inner Join (`jmInnerJoin`):**
+  - Returns only the rows where there is a match in both DataFrames.
+
+- **Left Join (`jmLeftJoin`):**
+  - Returns all rows from the left DataFrame and the matched rows from the right DataFrame. Unmatched rows from the right DataFrame will contain nulls.
+
+- **Right Join (`jmRightJoin`):**
+  - Returns all rows from the right DataFrame and the matched rows from the left DataFrame. Unmatched rows from the left DataFrame will contain nulls.
+
+- **Full Outer Join (`jmFullJoin`):**
+  - Returns all rows when there is a match in one of the DataFrames. Rows from both DataFrames that do not have matches will contain nulls.
+
+
+- **Example usage**:
+
+  ```pascal
+  var
+    DB1, DB2: TDuckDBConnection;
+    DFEmployees, DFDemographics, JoinedDF: TDuckFrame;
+  begin
+    // Create connections to databases
+    DB1 := TDuckDBConnection.Create('.\data\employees.db');
+    DB2 := TDuckDBConnection.Create('.\data\departments.db');
+    try
+      // Create Employees DataFrame
+      DFEmployees := DB1.Query('SELECT id, name, department_id FROM employees');
+        
+      // Create Demographics DataFrame
+      DFDemographics := DB2.Query('SELECT department_id, department_name FROM departments');
+        
+      // Perform a left join on 'department_id'
+      JoinedDF := DFEmployees.Join(DFDemographics, jmLeftJoin);
+      try
+        WriteLn('Joined DataFrame:');
+        JoinedDF.Print;
+      finally
+        JoinedDF.Free;
+      end;
+    finally
+      DB1.Free;
+      DB2.Free;
+    end;
+  end;
+  ```
+
+#### 6.2. Unions
+
+The `TUnionMode` enumeration controls how DataFrame combinations handle column matching:
+
+```pascal
+type
+  TUnionMode = (
+    umStrict,    // Most conservative: requires exact match of column names and types
+    umCommon,    // Intersection mode: only includes columns that exist in both frames
+    umAll        // Most inclusive: includes all columns from both frames
+  );
+```
+
+```pascal
+function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+```
+Combines two DataFrames and removes duplicate rows (similar to SQL's UNION).
+- Internally calls `UnionAll` followed by `Distinct`
+- Returns a new DataFrame with combined unique rows
+
+```pascal
+function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+```
+Combines two DataFrames keeping all rows including duplicates (similar to SQL's UNION ALL).
+- Different union modes affect how columns are combined:
+  - `umStrict`: Requires exact column match (names and types)
+  - `umCommon`: Only includes columns present in both frames
+  - `umAll`: Includes all columns, fills missing values with NULL
+- Returns a new DataFrame with all rows from both frames
+
+```pascal
+function Distinct: TDuckFrame;
+```
+Removes duplicate rows from the DataFrame.
+- Uses efficient hash-based deduplication
+- Considers all columns when determining uniqueness
+- Returns a new DataFrame with unique rows only
+
+### Examples
+
+```pascal
+var
+  DB: TDuckDBConnection;
+  DF1, DF2, Combined: TDuckFrame;
+begin
+  DB := TDuckDBConnection.Create(':memory:');
+  try
+    // Create DataFrames with different structures
+    DF1 := DB.Query('SELECT 1 as id, ''A'' as name, 25 as age');
+    DF2 := DB.Query('SELECT 2 as id, ''B'' as name, ''HR'' as department');
+    
+    // Union with common columns only
+    Combined := DF1.Union(DF2, umCommon);
+    try
+      Combined.Print;  // Shows only 'id' and 'name' columns
+    finally
+      Combined.Free;
+    end;
+    
+    // UnionAll with all columns
+    Combined := DF1.UnionAll(DF2, umAll);
+    try
+      Combined.Print;  // Shows all columns with NULL for missing values
+    finally
+      Combined.Free;
+    end;
+    
+    // Remove duplicates from a single DataFrame
+    Combined := DF1.Distinct;
+    try
+      Combined.Print;
+    finally
+      Combined.Free;
+    end;
+  finally
+    DF1.Free;
+    DF2.Free;
+    DB.Free;
+  end;
+end;
+```
+
+### Implementation Details
+
+The combination operations use `THashSet` for efficient unique value tracking:
+- Column name uniqueness in `umAll` mode
+- Row uniqueness in `Distinct` operation
+- Hash-based lookups provide O(1) average case complexity
+
+### Type Conversion
+When combining DataFrames with different column types:
+- Compatible types are automatically converted (e.g., Integer to Float)
+- Incompatible conversions result in NULL values
+- String columns can accept any type through string conversion
+- Type precedence follows SQL conventions
+
+### Notes
+- All union operations create a new DataFrame that must be freed by the caller
+- NULL values are preserved and handled properly in all operations
+- Column name matching is case-sensitive
+- Type conversions are attempted when possible but may result in NULL values if incompatible
+
+### 7. Input and Output Methods
+
+
+
+### 8. Display & Descriptive Analysis
+
+
+
+### 9. Helper Methods
+
+
 
 **Example**
 
@@ -551,34 +1096,9 @@ begin
 end;
 ```
 
-```pascal
-procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
-```
-- Adds a new column to the DataFrame
-- Parameters:
-  - `AName`: Name of the new column
-  - `AType`: Data type for the new column
-- New column is initialized with NULL values
-- Raises `EDuckDBError` if column name already exists
+x
 
-```pascal
-procedure AddRow(const AValues: array of Variant);
-```
-- Adds a new row to the DataFrame
-- Parameters:
-  - `AValues`: Array of values matching column count and types
-- Automatic type conversion is attempted
-- Raises `EDuckDBError` if value count doesn't match column count
 
-```pascal
-procedure SetValue(const ARow: Integer; const AColumnName: string; const AValue: Variant);
-```
-- Sets a single value in the DataFrame
-- Parameters:
-  - `ARow`: Row index
-  - `AColumnName`: Column name
-  - `AValue`: New value
-- Raises `EDuckDBError` for invalid row/column
 
 ### Output Methods
 
@@ -689,65 +1209,7 @@ Total count: 5
 
 ### Statistical Analysis
 
-```pascal
-function CorrPearson: TDuckFrame;
-```
-- Calculates the Pearson correlation matrix for all numeric columns
-- Returns a new DataFrame containing the correlation coefficients
-- Measures linear correlation between variables
-- Best for linear relationships between variables
-- Sensitive to outliers
-- Caller must free the returned DataFrame
 
-```pascal
-function CorrSpearman: TDuckFrame;
-```
-- Calculates the Spearman rank correlation matrix for all numeric columns
-- Returns a new DataFrame containing the correlation coefficients
-- Measures monotonic relationships (including non-linear)
-- More robust to outliers than Pearson correlation
-- Better for ordinal data and non-linear relationships
-- Caller must free the returned DataFrame
-
-Example usage:
-```pascal
-var
-  PearsonCorr, SpearmanCorr: TDuckFrame;
-begin
-  // Calculate Pearson correlation
-  PearsonCorr := DF.CorrPearson;
-  try
-    WriteLn('Pearson Correlation:');
-    PearsonCorr.Print;
-  finally
-    PearsonCorr.Free;
-  end;
-  
-  // Calculate Spearman correlation
-  SpearmanCorr := DF.CorrSpearman;
-  try
-    WriteLn('Spearman Correlation:');
-    SpearmanCorr.Print;
-  finally
-    SpearmanCorr.Free;
-  end;
-end;
-```
-
-When to use each correlation method:
-
-Pearson Correlation:
-- Variables have linear relationships
-- Data is normally distributed
-- No significant outliers
-- Variables are continuous
-
-Spearman Correlation:
-- Non-linear but monotonic relationships
-- Ordinal data
-- Presence of outliers
-- Non-normal distributions
-- More robust general-purpose correlation
 
 ## File Operations
 
@@ -793,134 +1255,9 @@ multiple lines","Another field"
 
 ## DataFrame Combination Methods
 
-### DataFrame Combination Operations
 
-#### Union Modes
-The `TUnionMode` enumeration controls how DataFrame combinations handle column matching:
 
-```pascal
-type
-  TUnionMode = (
-    umStrict,    // Most conservative: requires exact match of column names and types
-    umCommon,    // Intersection mode: only includes columns that exist in both frames
-    umAll        // Most inclusive: includes all columns from both frames
-  );
-```
 
-#### Union
-```pascal
-function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-```
-Combines two DataFrames and removes duplicate rows (similar to SQL's UNION).
-- Internally calls `UnionAll` followed by `Distinct`
-- Returns a new DataFrame with combined unique rows
 
-#### UnionAll
-```pascal
-function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-```
-Combines two DataFrames keeping all rows including duplicates (similar to SQL's UNION ALL).
-- Different union modes affect how columns are combined:
-  - `umStrict`: Requires exact column match (names and types)
-  - `umCommon`: Only includes columns present in both frames
-  - `umAll`: Includes all columns, fills missing values with NULL
-- Returns a new DataFrame with all rows from both frames
 
-#### Distinct
-```pascal
-function Distinct: TDuckFrame;
-```
-Removes duplicate rows from the DataFrame.
-- Uses efficient hash-based deduplication
-- Considers all columns when determining uniqueness
-- Returns a new DataFrame with unique rows only
 
-### Examples
-
-```pascal
-var
-  DB: TDuckDBConnection;
-  DF1, DF2, Combined: TDuckFrame;
-begin
-  DB := TDuckDBConnection.Create(':memory:');
-  try
-    // Create DataFrames with different structures
-    DF1 := DB.Query('SELECT 1 as id, ''A'' as name, 25 as age');
-    DF2 := DB.Query('SELECT 2 as id, ''B'' as name, ''HR'' as department');
-    
-    // Union with common columns only
-    Combined := DF1.Union(DF2, umCommon);
-    try
-      Combined.Print;  // Shows only 'id' and 'name' columns
-    finally
-      Combined.Free;
-    end;
-    
-    // UnionAll with all columns
-    Combined := DF1.UnionAll(DF2, umAll);
-    try
-      Combined.Print;  // Shows all columns with NULL for missing values
-    finally
-      Combined.Free;
-    end;
-    
-    // Remove duplicates from a single DataFrame
-    Combined := DF1.Distinct;
-    try
-      Combined.Print;
-    finally
-      Combined.Free;
-    end;
-  finally
-    DF1.Free;
-    DF2.Free;
-    DB.Free;
-  end;
-end;
-```
-
-### Implementation Details
-
-The combination operations use `THashSet` for efficient unique value tracking:
-- Column name uniqueness in `umAll` mode
-- Row uniqueness in `Distinct` operation
-- Hash-based lookups provide O(1) average case complexity
-
-### Type Conversion
-When combining DataFrames with different column types:
-- Compatible types are automatically converted (e.g., Integer to Float)
-- Incompatible conversions result in NULL values
-- String columns can accept any type through string conversion
-- Type precedence follows SQL conventions
-
-### Notes
-- All union operations create a new DataFrame that must be freed by the caller
-- NULL values are preserved and handled properly in all operations
-- Column name matching is case-sensitive
-- Type conversions are attempted when possible but may result in NULL values if incompatible
-
-### Missing Data Handling
-
-```pascal
-function FillNA(const Value: Variant): TDuckFrame;
-```
-- Creates new DataFrame with NULL values replaced
-- Parameters:
-  - `Value`: Value to use for replacement
-- Returns new DataFrame with filled values
-
-```pascal
-function DropNA: TDuckFrame;
-```
-- Creates new DataFrame with rows containing any NULL values removed
-- Returns new DataFrame with complete cases only
-
-### Unique Value Analysis
-
-```pascal
-function UniqueCounts(const ColumnName: string): TDuckFrame;
-```
-- Creates frequency table for a column
-- Parameters:
-  - `ColumnName`: Column to analyze
-- Returns DataFrame with value counts
