@@ -39,6 +39,14 @@ type
     umAll        // All columns: include all columns from both frames
   );
 
+
+  TJoinMode = (
+    jmInner,     // Only matching rows from both frames
+    jmLeftJoin,  // All rows from left frame, matching from right
+    jmRightJoin, // All rows from right frame, matching from left
+    jmFullJoin   // All rows from both frames
+  );
+
   { Column types that map to DuckDB's native types }
   TDuckDBColumnType = (
     dctUnknown,    // Unknown or unsupported type
@@ -122,6 +130,14 @@ type
 
   TStringArray = array of string;  // Add this type declaration at the unit level
 
+  { TJoinColumnMap is used to map columns from the left and right DataFrames 
+    during a join operation }
+  TJoinColumnMap = record
+    LeftIndex: Integer;
+    RightIndex: Integer;
+  end;
+
+
   { DataFrame class for handling query results in DuckDB compatible datatype}
   TDuckFrame = class
   private
@@ -140,6 +156,17 @@ type
     { Private helpers for constructors }
     procedure InitializeBlank(const AColumnNames: array of string; 
                             const AColumnTypes: array of TDuckDBColumnType);
+
+    { Private helpers for Join }
+  { Private helpers for Join }
+  procedure PerformInnerJoin(Result: TDuckFrame; Other: TDuckFrame; 
+    const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+  procedure PerformLeftJoin(Result: TDuckFrame; Other: TDuckFrame; 
+    const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+  procedure PerformRightJoin(Result: TDuckFrame; Other: TDuckFrame; 
+    const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+  procedure PerformFullJoin(Result: TDuckFrame; Other: TDuckFrame; 
+    const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 
   public
 
@@ -234,6 +261,12 @@ type
     procedure SetValue(const ARow: Integer; const AColumnName: string; 
                        const AValue: Variant);
 
+    function ValueCounts(const ColumnName: string; 
+      Normalize: Boolean = False): TDuckFrame;
+    function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
+    function Quantile(const ColumnName: string; const Quantiles: array of Double): TDuckFrame;
+
+
   end;
 
 { Helper function for sorting }
@@ -247,7 +280,20 @@ function DuckDBTypeToString(ColumnType: TDuckDBColumnType): string;
 { Converts a SQL type string to its DuckDB column type }
 function StringToDuckDBType(const TypeName: string): TDuckDBColumnType;
 
+{ Helper function to check if an array contains a specific value }
+function Contains(const Arr: array of string; const Value: string): Boolean;  
+
 implementation
+
+function Contains(const Arr: array of string; const Value: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 0 to High(Arr) do
+    if Arr[I] = Value then
+      Exit(True);
+end;
 
 { TDuckDBColumn helper functions }
 
@@ -1338,7 +1384,7 @@ begin
     else
     begin
       while (Lo <= iHi) and (VarIsNull(A[Lo]) or (A[Lo] > Pivot)) do Inc(Lo);
-      while (Hi >= iLo) and not VarIsNull(A[Hi]) and (A[Hi] < Pivot) do Dec(Hi);
+      while (Hi >= iLo) and not (VarIsNull(A[Hi]) and (A[Hi] < Pivot)) do Dec(Hi);
     end;
 
     if Lo <= Hi then
@@ -3051,4 +3097,466 @@ begin
   end;
 end;
 
+function TDuckFrame.ValueCounts(const ColumnName: string; 
+  Normalize: Boolean = False): TDuckFrame;
+var
+  FreqMap: specialize TDictionary<Variant, Integer>;
+  Total: Integer;
+  I: Integer;
+  Value: Variant;
+  ColIndex: Integer;
+begin
+  Result := nil;  // Initialize to nil for safety
+  FreqMap := specialize TDictionary<Variant, Integer>.Create;
+  try
+    // Find column
+    ColIndex := FindColumnIndex(ColumnName);
+    if ColIndex < 0 then
+      raise EDuckDBError.CreateFmt('Column "%s" not found', [ColumnName]);
+
+    // Count occurrences
+    Total := 0;
+    for I := 0 to FRowCount - 1 do
+    begin
+      Value := FColumns[ColIndex].Data[I];
+      if not VarIsNull(Value) then
+      begin
+        if FreqMap.ContainsKey(Value) then
+          FreqMap[Value] := FreqMap[Value] + 1
+        else
+          FreqMap.Add(Value, 1);
+        Inc(Total);
+      end;
+    end;
+
+    // Create result DataFrame
+    Result := TDuckFrame.Create;
+    SetLength(Result.FColumns, 3);
+    
+    // Initialize columns properly
+    with Result.FColumns[0] do
+    begin
+      Name := 'Value';
+      DataType := FColumns[ColIndex].DataType;
+      SetLength(Data, FreqMap.Count);
+    end;
+    
+    with Result.FColumns[1] do
+    begin
+      Name := 'Count';
+      DataType := dctInteger;
+      SetLength(Data, FreqMap.Count);
+    end;
+    
+    with Result.FColumns[2] do
+    begin
+      Name := 'Percentage';
+      DataType := dctDouble;
+      SetLength(Data, FreqMap.Count);
+    end;
+
+    Result.FRowCount := FreqMap.Count;
+
+    // Fill results
+    I := 0;
+    for Value in FreqMap.Keys do
+    begin
+      Result.FColumns[0].Data[I] := Value;
+      Result.FColumns[1].Data[I] := FreqMap[Value];
+      if Normalize then
+        Result.FColumns[2].Data[I] := (FreqMap[Value] / Total) * 100
+      else
+        Result.FColumns[2].Data[I] := FreqMap[Value];
+      Inc(I);
+    end;
+
+    // Sort by count descending
+    Result := Result.Sort('Count', False);
+  except
+    FreeAndNil(Result);  // Clean up on error
+    raise;
+  end;
+  FreqMap.Free;
+end;
+
+
+function TDuckFrame.Quantile(const ColumnName: string; const Quantiles: array of Double): TDuckFrame;
+var
+  Col: TDuckDBColumn;
+  NumericValues: array of Double;
+  ValidCount, I: Integer;
+  Value: Variant;
+begin
+  Result := TDuckFrame.Create;
+  try
+    // Find the column
+    Col := GetColumnByName(ColumnName);
+    if not IsNumericColumn(Col) then
+      raise EDuckDBError.CreateFmt('Column "%s" is not numeric', [ColumnName]);
+
+    // Initialize arrays
+    SetLength(NumericValues, FRowCount);
+    ValidCount := 0;
+
+    // Collect valid numeric values
+    for I := 0 to FRowCount - 1 do
+    begin
+      Value := Col.Data[I];
+      if not VarIsNull(Value) then
+      begin
+        NumericValues[ValidCount] := VarAsType(Value, varDouble);
+        Inc(ValidCount);
+      end;
+    end;
+    SetLength(NumericValues, ValidCount);
+
+    // Sort values for percentile calculation
+    QuickSort(NumericValues, 0, ValidCount - 1);
+
+    // Create result DataFrame
+    SetLength(Result.FColumns, 2);
+    Result.FColumns[0].Name := 'quantile';
+    Result.FColumns[0].DataType := dctDouble;
+    Result.FColumns[1].Name := ColumnName;
+    Result.FColumns[1].DataType := dctDouble;
+
+    // Calculate quantiles
+    Result.FRowCount := Length(Quantiles);
+    SetLength(Result.FColumns[0].Data, Result.FRowCount);
+    SetLength(Result.FColumns[1].Data, Result.FRowCount);
+
+    for I := 0 to High(Quantiles) do
+    begin
+      if (Quantiles[I] < 0) or (Quantiles[I] > 1) then
+        raise EDuckDBError.Create('Quantiles must be between 0 and 1');
+        
+      Result.FColumns[0].Data[I] := Quantiles[I];
+      Result.FColumns[1].Data[I] := CalculatePercentile(NumericValues, Quantiles[I]);
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TDuckFrame.Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
+var
+  CommonCols: array of string;
+  ColMap: array of TJoinColumnMap;
+  I, J: Integer;
+begin
+  Result := nil;
+  try
+    // Find common columns
+    SetLength(CommonCols, 0);
+    SetLength(ColMap, 0);
+    for I := 0 to High(FColumns) do
+      for J := 0 to High(Other.FColumns) do
+        if FColumns[I].Name = Other.FColumns[J].Name then
+        begin
+          SetLength(CommonCols, Length(CommonCols) + 1);
+          SetLength(ColMap, Length(ColMap) + 1);
+          CommonCols[High(CommonCols)] := FColumns[I].Name;
+          ColMap[High(ColMap)].LeftIndex := I;
+          ColMap[High(ColMap)].RightIndex := J;
+        end;
+
+    if Length(CommonCols) = 0 then
+      raise EDuckDBError.Create('No common columns found for join');
+
+    // Create result frame with all needed columns
+    Result := TDuckFrame.Create;
+    SetLength(Result.FColumns, Length(FColumns) + Length(Other.FColumns) - Length(CommonCols));
+
+    // Copy column definitions
+    for I := 0 to High(FColumns) do
+    begin
+      Result.FColumns[I].Name := FColumns[I].Name;
+      Result.FColumns[I].DataType := FColumns[I].DataType;
+    end;
+
+    // Copy non-common columns from right frame
+    J := Length(FColumns);
+    for I := 0 to High(Other.FColumns) do
+      if not Contains(CommonCols, Other.FColumns[I].Name) then
+      begin
+        Result.FColumns[J].Name := Other.FColumns[I].Name;
+        Result.FColumns[J].DataType := Other.FColumns[I].DataType;
+        Inc(J);
+      end;
+
+    case Mode of
+      jmInner: PerformInnerJoin(Result, Other, CommonCols, ColMap);
+      jmLeftJoin: PerformLeftJoin(Result, Other, CommonCols, ColMap);
+      jmRightJoin: PerformRightJoin(Result, Other, CommonCols, ColMap);
+      jmFullJoin: PerformFullJoin(Result, Other, CommonCols, ColMap);
+    end;
+  except
+    FreeAndNil(Result);
+    raise;
+  end;
+end;
+
+
+procedure TDuckFrame.PerformLeftJoin(Result: TDuckFrame; Other: TDuckFrame;
+  const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+var
+  I, J, K, ResultRow: Integer;
+  HasMatch: Boolean;
+begin
+  // Pre-allocate for worst case
+  for I := 0 to High(Result.FColumns) do
+    SetLength(Result.FColumns[I].Data, FRowCount);
+
+  Result.FRowCount := 0;
+  
+  // Process each left row
+  for I := 0 to FRowCount - 1 do
+  begin
+    HasMatch := False;
+    
+    // Look for matches in right frame
+    for J := 0 to Other.FRowCount - 1 do
+    begin
+      // Check if rows match on common columns
+      HasMatch := True;
+      for K := 0 to High(ColMap) do
+        if FColumns[ColMap[K].LeftIndex].Data[I] <> 
+           Other.FColumns[ColMap[K].RightIndex].Data[J] then
+        begin
+          HasMatch := False;
+          Break;
+        end;
+        
+      if HasMatch then
+      begin
+        ResultRow := Result.FRowCount;
+        // Copy all columns from left frame
+        for K := 0 to High(FColumns) do
+          Result.FColumns[K].Data[ResultRow] := FColumns[K].Data[I];
+          
+        // Copy non-common columns from right frame
+        for K := 0 to High(Other.FColumns) do
+          if not Contains(CommonCols, Other.FColumns[K].Name) then
+            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+              Other.FColumns[K].Data[J];
+              
+        Inc(Result.FRowCount);
+      end;
+    end;
+    
+    // If no match, add left row with nulls for right columns
+    if not HasMatch then
+    begin
+      ResultRow := Result.FRowCount;
+      // Copy left frame columns
+      for K := 0 to High(FColumns) do
+        Result.FColumns[K].Data[ResultRow] := FColumns[K].Data[I];
+        
+      // Set nulls for right frame columns
+      for K := Length(FColumns) to High(Result.FColumns) do
+        Result.FColumns[K].Data[ResultRow] := Null;
+        
+      Inc(Result.FRowCount);
+    end;
+  end;
+end;
+procedure TDuckFrame.PerformInnerJoin(Result: TDuckFrame; Other: TDuckFrame;
+  const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+var
+  I, J, K, ResultRow: Integer;
+  IsMatch: Boolean;
+begin
+  // Pre-allocate for worst case
+  for I := 0 to High(Result.FColumns) do
+    SetLength(Result.FColumns[I].Data, FRowCount * Other.FRowCount);
+
+  Result.FRowCount := 0;
+  
+  // Process each left row
+  for I := 0 to FRowCount - 1 do
+    // Compare with each right row
+    for J := 0 to Other.FRowCount - 1 do
+    begin
+      // Check if rows match on common columns
+      IsMatch := True;
+      for K := 0 to High(ColMap) do
+        if FColumns[ColMap[K].LeftIndex].Data[I] <> 
+           Other.FColumns[ColMap[K].RightIndex].Data[J] then
+        begin
+          IsMatch := False;
+          Break;
+        end;
+        
+      if IsMatch then
+      begin
+        ResultRow := Result.FRowCount;
+        // Copy all columns from left frame
+        for K := 0 to High(FColumns) do
+          Result.FColumns[K].Data[ResultRow] := FColumns[K].Data[I];
+          
+        // Copy non-common columns from right frame
+        for K := 0 to High(Other.FColumns) do
+          if not Contains(CommonCols, Other.FColumns[K].Name) then
+            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+              Other.FColumns[K].Data[J];
+              
+        Inc(Result.FRowCount);
+      end;
+    end;
+end;
+
+procedure TDuckFrame.PerformRightJoin(Result: TDuckFrame; Other: TDuckFrame;
+  const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+var
+  I, J, K, ResultRow: Integer;
+  HasMatch: Boolean;
+begin
+  // Pre-allocate for worst case
+  for I := 0 to High(Result.FColumns) do
+    SetLength(Result.FColumns[I].Data, Other.FRowCount);
+
+  Result.FRowCount := 0;
+  
+  // Process each right row
+  for J := 0 to Other.FRowCount - 1 do
+  begin
+    HasMatch := False;
+    
+    // Look for matches in left frame
+    for I := 0 to FRowCount - 1 do
+    begin
+      // Check if rows match on common columns
+      HasMatch := True;
+      for K := 0 to High(ColMap) do
+        if FColumns[ColMap[K].LeftIndex].Data[I] <> 
+           Other.FColumns[ColMap[K].RightIndex].Data[J] then
+        begin
+          HasMatch := False;
+          Break;
+        end;
+        
+      if HasMatch then
+      begin
+        ResultRow := Result.FRowCount;
+        // Copy all columns from left frame
+        for K := 0 to High(FColumns) do
+          Result.FColumns[K].Data[ResultRow] := FColumns[K].Data[I];
+          
+        // Copy non-common columns from right frame
+        for K := 0 to High(Other.FColumns) do
+          if not Contains(CommonCols, Other.FColumns[K].Name) then
+            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+              Other.FColumns[K].Data[J];
+              
+        Inc(Result.FRowCount);
+      end;
+    end;
+    
+    // If no match, add right row with nulls for left columns
+    if not HasMatch then
+    begin
+      ResultRow := Result.FRowCount;
+      // Set nulls for left frame columns
+      for K := 0 to High(FColumns) do
+        Result.FColumns[K].Data[ResultRow] := Null;
+        
+      // Copy right frame columns
+      for K := 0 to High(Other.FColumns) do
+        if not Contains(CommonCols, Other.FColumns[K].Name) then
+          Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+            Other.FColumns[K].Data[J];
+            
+      Inc(Result.FRowCount);
+    end;
+  end;
+end;
+
+procedure TDuckFrame.PerformFullJoin(Result: TDuckFrame; Other: TDuckFrame;
+  const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
+var
+  I, J, K, ResultRow: Integer;
+  MatchedRight: array of Boolean;
+  HasMatch: Boolean;
+begin
+  // Track which right rows have been matched
+  SetLength(MatchedRight, Other.FRowCount);
+  for I := 0 to High(MatchedRight) do
+    MatchedRight[I] := False;
+
+  // Pre-allocate for worst case
+  for I := 0 to High(Result.FColumns) do
+    SetLength(Result.FColumns[I].Data, FRowCount + Other.FRowCount);
+
+  Result.FRowCount := 0;
+  
+  // First do left join
+  for I := 0 to FRowCount - 1 do
+  begin
+    HasMatch := False;
+    
+    for J := 0 to Other.FRowCount - 1 do
+    begin
+      // Check if rows match on common columns
+      HasMatch := True;
+      for K := 0 to High(ColMap) do
+        if FColumns[ColMap[K].LeftIndex].Data[I] <> 
+           Other.FColumns[ColMap[K].RightIndex].Data[J] then
+        begin
+          HasMatch := False;
+          Break;
+        end;
+        
+      if HasMatch then
+      begin
+        MatchedRight[J] := True;
+        ResultRow := Result.FRowCount;
+        // Copy all columns from left frame
+        for K := 0 to High(FColumns) do
+          Result.FColumns[K].Data[ResultRow] := FColumns[K].Data[I];
+          
+        // Copy non-common columns from right frame
+        for K := 0 to High(Other.FColumns) do
+          if not Contains(CommonCols, Other.FColumns[K].Name) then
+            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+              Other.FColumns[K].Data[J];
+              
+        Inc(Result.FRowCount);
+      end;
+    end;
+    
+    // If no match, add left row with nulls for right columns
+    if not HasMatch then
+    begin
+      ResultRow := Result.FRowCount;
+      // Copy left frame columns
+      for K := 0 to High(FColumns) do
+        Result.FColumns[K].Data[ResultRow] := FColumns[K].Data[I];
+        
+      // Set nulls for right frame columns
+      for K := Length(FColumns) to High(Result.FColumns) do
+        Result.FColumns[K].Data[ResultRow] := Null;
+        
+      Inc(Result.FRowCount);
+    end;
+  end;
+  
+  // Add unmatched right rows
+  for J := 0 to Other.FRowCount - 1 do
+    if not MatchedRight[J] then
+    begin
+      ResultRow := Result.FRowCount;
+      // Set nulls for left frame columns
+      for K := 0 to High(FColumns) do
+        Result.FColumns[K].Data[ResultRow] := Null;
+        
+      // Copy right frame columns
+      for K := 0 to High(Other.FColumns) do
+        if not Contains(CommonCols, Other.FColumns[K].Name) then
+          Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+            Other.FColumns[K].Data[J];
+            
+      Inc(Result.FRowCount);
+    end;
+end;
 end. 

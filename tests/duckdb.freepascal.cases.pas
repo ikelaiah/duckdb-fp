@@ -103,6 +103,23 @@ type
     procedure TestSample;
     procedure TestRenameColumn;
     procedure TestDropColumns;
+    
+    // Quantile Tests
+    procedure TestQuantile;
+    procedure TestQuantileFailsWithNonNumericColumn;
+    procedure TestQuantileFailsWithInvalidQuantiles;
+
+    // Join Tests
+    procedure TestJoin;
+    procedure TestJoinFailsWithNoCommonColumns;
+    procedure TestAllJoinTypes;
+
+    // Contains Tests
+    procedure TestContains;
+
+    // ValueCounts Tests
+    procedure TestValueCounts;
+    procedure TestValueCountsNormalize;
   end;
 
 implementation
@@ -1595,6 +1612,318 @@ begin
     end;
   finally
     Frame.Free;
+  end;
+end;
+
+
+procedure TDuckDBDataFrameTest.TestQuantile;
+var
+  Frame, QuantileFrame: TDuckFrame;
+  Quantiles: array of Double;
+begin
+  Frame := TDuckFrame.CreateBlank(['A', 'B'], [dctDouble, dctDouble]);
+  try
+    // Add known data for precise quantile testing
+    Frame.AddRow([1.0, 2.0]);
+    Frame.AddRow([2.0, 4.0]);
+    Frame.AddRow([3.0, 6.0]);
+    Frame.AddRow([4.0, 8.0]);
+    
+    SetLength(Quantiles, 3);
+    Quantiles[0] := 0.25;  // Q1
+    Quantiles[1] := 0.50;  // Median
+    Quantiles[2] := 0.75;  // Q3
+    
+    QuantileFrame := Frame.Quantile('B', Quantiles);
+    try
+      AssertEquals('Should have 2 columns', 2, QuantileFrame.ColumnCount);
+      AssertEquals('Should have 3 rows (one per quantile)', 3, QuantileFrame.RowCount);
+      
+      // Test quantile values with known data
+      AssertEquals('Q1 should be correct', 3.5, Double(QuantileFrame.ValuesByName[0, 'B']));
+      AssertEquals('Median should be correct', 5.0, Double(QuantileFrame.ValuesByName[1, 'B']));
+      AssertEquals('Q3 should be correct', 6.5, Double(QuantileFrame.ValuesByName[2, 'B']));
+    finally
+      QuantileFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestQuantileFailsWithNonNumericColumn;
+var
+  Frame: TDuckFrame;
+  Quantiles: array of Double;
+begin
+  Frame := CreateSampleFrame;
+  try
+    SetLength(Quantiles, 1);
+    Quantiles[0] := 0.5;
+    
+    try
+      Frame.Quantile('Name', Quantiles);  // Name is a string column
+      Fail('Should raise exception for non-numeric column');
+    except
+      on E: EDuckDBError do
+        AssertTrue('Should mention non-numeric column', 
+          Pos('not numeric', E.Message) > 0);
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestQuantileFailsWithInvalidQuantiles;
+var
+  Frame: TDuckFrame;
+  Quantiles: array of Double;
+begin
+  Frame := CreateNumericFrame;
+  try
+    SetLength(Quantiles, 1);
+    Quantiles[0] := 1.5;  // Invalid quantile > 1
+    
+    try
+      Frame.Quantile('B', Quantiles);
+      Fail('Should raise exception for invalid quantile value');
+    except
+      on E: EDuckDBError do
+        AssertTrue('Should mention invalid quantile', 
+          Pos('between 0 and 1', E.Message) > 0);
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestJoin;
+var
+  Frame1, Frame2, JoinedFrame: TDuckFrame;
+begin
+  // Create first frame
+  Frame1 := TDuckFrame.CreateBlank(['ID', 'Name', 'Age'], 
+    [dctInteger, dctString, dctInteger]);
+  Frame1.AddRow([1, 'John', 30]);
+  Frame1.AddRow([2, 'Jane', 25]);
+  
+  // Create second frame
+  Frame2 := TDuckFrame.CreateBlank(['ID', 'City', 'Salary'], 
+    [dctInteger, dctString, dctDouble]);
+  Frame2.AddRow([1, 'New York', 75000.0]);
+  Frame2.AddRow([3, 'Boston', 80000.0]);
+  
+  try
+    // Test inner join
+    JoinedFrame := Frame1.Join(Frame2, jmInner);
+    try
+      AssertEquals('Should have 1 row for inner join', 1, JoinedFrame.RowCount);
+      AssertEquals('Should have 4 columns', 4, JoinedFrame.ColumnCount);
+      AssertEquals('Should match on ID=1', 'John', 
+        string(JoinedFrame.ValuesByName[0, 'Name']));
+      AssertEquals('Should include city', 'New York', 
+        string(JoinedFrame.ValuesByName[0, 'City']));
+    finally
+      JoinedFrame.Free;
+    end;
+    
+    // Test left join
+    JoinedFrame := Frame1.Join(Frame2, jmLeftJoin);
+    try
+      AssertEquals('Should have 2 rows for left join', 2, JoinedFrame.RowCount);
+      AssertTrue('Should have null salary for unmatched row', 
+        VarIsNull(JoinedFrame.ValuesByName[1, 'Salary']));
+    finally
+      JoinedFrame.Free;
+    end;
+  finally
+    Frame1.Free;
+    Frame2.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestJoinFailsWithNoCommonColumns;
+var
+  Frame1, Frame2: TDuckFrame;
+begin
+  Frame1 := TDuckFrame.CreateBlank(['Name', 'Age'], [dctString, dctInteger]);
+  Frame2 := TDuckFrame.CreateBlank(['City', 'Salary'], [dctString, dctDouble]);
+  
+  try
+    try
+      Frame1.Join(Frame2);
+      Fail('Should raise exception when no common columns exist');
+    except
+      on E: EDuckDBError do
+        AssertTrue('Should mention no common columns', 
+          Pos('No common columns', E.Message) > 0);
+    end;
+  finally
+    Frame1.Free;
+    Frame2.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestContains;
+var
+  Frame: TDuckFrame;
+  Arr: array of string;
+begin
+  Frame := CreateSampleFrame;
+  try
+    SetLength(Arr, 2);
+    Arr[0] := 'Name';
+    Arr[1] := 'Age';
+    
+    AssertTrue('Should find existing column', Contains(Arr, 'Name'));
+    AssertFalse('Should not find non-existent column', Contains(Arr, 'NonExistent'));
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestValueCounts;
+var
+  Frame, CountsFrame: TDuckFrame;
+begin
+  Frame := TDuckFrame.CreateBlank(['Name', 'City', 'Age', 'Salary'],
+    [dctString, dctString, dctInteger, dctDouble]);
+  try
+    Frame.AddRow(['John', 'New York', 30, 75000.50]);
+    Frame.AddRow(['Jane', 'Chicago', 25, 65000.75]);
+    Frame.AddRow(['Bob', 'Los Angeles', 35, 85000.25]);
+    Frame.AddRow(['Alice', 'Boston', 28, 70000.00]);
+    Frame.AddRow(['Mike', 'New York', 32, 78000.00]);  // Add duplicate city
+    
+    CountsFrame := Frame.ValueCounts('City');
+    try
+      AssertEquals('Should have 3 columns', 3, CountsFrame.ColumnCount);
+      AssertEquals('Should have 4 unique cities', 4, CountsFrame.RowCount);
+      
+      // New York appears twice, others once
+      AssertEquals('New York count should be 2', 2, 
+        Integer(CountsFrame.ValuesByName[0, 'Count']));
+      AssertEquals('Other cities count should be 1', 1, 
+        Integer(CountsFrame.ValuesByName[1, 'Count']));
+    finally
+      CountsFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestValueCountsNormalize;
+var
+  Frame, CountsFrame: TDuckFrame;
+begin
+  Frame := CreateSampleFrame;
+  try
+    // Add duplicate cities to test frequency counts
+    Frame.AddRow(['Alice', 35, 'New York', 85000.0]);  // Duplicate New York
+    Frame.AddRow(['Bob', 28, 'Chicago', 72000.0]);     // Duplicate Chicago
+    
+    CountsFrame := Frame.ValueCounts('City', True);  // With normalize=True
+    try
+      AssertEquals('Should have 3 columns', 3, CountsFrame.ColumnCount);
+      AssertEquals('Should have 4 unique cities', 4, CountsFrame.RowCount);
+      
+      // Verify column names
+      AssertEquals('First column should be Value', 'Value', CountsFrame.Columns[0].Name);
+      AssertEquals('Second column should be Count', 'Count', CountsFrame.Columns[1].Name);
+      AssertEquals('Third column should be Percentage', 'Percentage', CountsFrame.Columns[2].Name);
+      
+      // New York and Chicago should appear twice (33.33%), others once (16.67%)
+      // First row should be highest frequency
+      AssertEquals('First city count should be 2', 2, CountsFrame.ValuesByName[0, 'Count']);
+      AssertEquals('First city percentage should be 33.33', 33.33,
+        Double(CountsFrame.ValuesByName[0, 'Percentage']), 0.01);
+        
+      // Last row should be lowest frequency
+      AssertEquals('Last city count should be 1', 1, CountsFrame.ValuesByName[3, 'Count']);
+      AssertEquals('Last city percentage should be 16.67', 16.67,
+        Double(CountsFrame.ValuesByName[3, 'Percentage']), 0.01);
+        
+      // Total percentage should sum to 100
+      AssertEquals('Total percentage should be 100', 100.0,
+        Double(CountsFrame.ValuesByName[0, 'Percentage']) +
+        Double(CountsFrame.ValuesByName[1, 'Percentage']) +
+        Double(CountsFrame.ValuesByName[2, 'Percentage']) +
+        Double(CountsFrame.ValuesByName[3, 'Percentage']), 0.01);
+    finally
+      CountsFrame.Free;
+    end;
+  finally
+    Frame.Free;
+  end;
+end;
+
+procedure TDuckDBDataFrameTest.TestAllJoinTypes;
+var
+  Frame1, Frame2, JoinedFrame: TDuckFrame;
+begin
+  // Create first frame
+  Frame1 := TDuckFrame.CreateBlank(['ID', 'Name'], [dctInteger, dctString]);
+  try
+    Frame1.AddRow([1, 'John']);
+    Frame1.AddRow([2, 'Jane']);
+    Frame1.AddRow([3, 'Bob']);
+    
+    // Create second frame
+    Frame2 := TDuckFrame.CreateBlank(['ID', 'City'], [dctInteger, dctString]);
+    try
+      Frame2.AddRow([1, 'New York']);
+      Frame2.AddRow([2, 'Boston']);
+      Frame2.AddRow([4, 'Chicago']);
+      
+      // Test Inner Join
+      JoinedFrame := Frame1.Join(Frame2, jmInner);
+      try
+        AssertEquals('Inner join should have 2 rows', 2, JoinedFrame.RowCount);
+        AssertEquals('First row ID should be 1', 1, Integer(JoinedFrame.ValuesByName[0, 'ID']));
+        AssertEquals('Second row ID should be 2', 2, Integer(JoinedFrame.ValuesByName[1, 'ID']));
+      finally
+        JoinedFrame.Free;
+      end;
+      
+      // Test Left Join
+      JoinedFrame := Frame1.Join(Frame2, jmLeftJoin);
+      try
+        AssertEquals('Left join should have 3 rows', 3, JoinedFrame.RowCount);
+        AssertTrue('Third row City should be null', 
+          VarIsNull(JoinedFrame.ValuesByName[2, 'City']));
+      finally
+        JoinedFrame.Free;
+      end;
+      
+      // Test Right Join
+      JoinedFrame := Frame1.Join(Frame2, jmRightJoin);
+      try
+        AssertEquals('Right join should have 3 rows', 3, JoinedFrame.RowCount);
+        AssertTrue('Third row Name should be null', 
+          VarIsNull(JoinedFrame.ValuesByName[2, 'Name']));
+      finally
+        JoinedFrame.Free;
+      end;
+      
+      // Test Full Join
+      JoinedFrame := Frame1.Join(Frame2, jmFullJoin);
+      try
+        AssertEquals('Full join should have 4 rows', 4, JoinedFrame.RowCount);
+        // Check for both unmatched rows
+        AssertTrue('Bob should have null City', 
+          VarIsNull(JoinedFrame.ValuesByName[2, 'City']));
+        AssertTrue('Chicago should have null Name', 
+          VarIsNull(JoinedFrame.ValuesByName[3, 'Name']));
+      finally
+        JoinedFrame.Free;
+      end;
+      
+    finally
+      Frame2.Free;
+    end;
+  finally
+    Frame1.Free;
   end;
 end;
 
