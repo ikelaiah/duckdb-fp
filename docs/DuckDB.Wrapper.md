@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [DuckDB.Wrapper API Reference](#duckdbwrapper-api-reference)
+  - [Table of Contents](#table-of-contents)
   - [TDuckDBConnection](#tduckdbconnection)
     - [Properties](#properties)
     - [Constructor Methods](#constructor-methods)
@@ -10,8 +11,15 @@
     - [Query Execution](#query-execution)
     - [Transaction Management](#transaction-management)
     - [CSV Operations](#csv-operations)
-    - [Error Handling](#error-handling)
     - [Data Import/Export](#data-importexport)
+    - [Error Handling](#error-handling)
+  - [Usage Examples](#usage-examples)
+    - [Reading CSV Files](#reading-csv-files)
+    - [In-Memory Database](#in-memory-database)
+    - [File-Based Database](#file-based-database)
+    - [Transaction Example](#transaction-example)
+    - [Query with DataFrame](#query-with-dataframe)
+    - [Single Value Query](#single-value-query)
 
 ## TDuckDBConnection
 

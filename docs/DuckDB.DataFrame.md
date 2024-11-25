@@ -36,6 +36,13 @@
     - [Notes](#notes)
     - [Missing Data Handling](#missing-data-handling)
     - [Unique Value Analysis](#unique-value-analysis)
+      - [Filter](#filter)
+      - [Sort](#sort)
+      - [GroupBy](#groupby)
+      - [Sample](#sample)
+      - [Column Operations](#column-operations)
+      - [Statistical Operations](#statistical-operations)
+      - [Join Operations](#join-operations)
 
 ## TDuckFrame
 
@@ -840,4 +847,192 @@ function UniqueCounts(const ColumnName: string): TDuckFrame;
 - Parameters:
   - `ColumnName`: Column to analyze
 - Returns DataFrame with value counts
+
+#### Filter
+```pascal
+function Filter(const Condition: TFilterFunc): TDuckFrame;
+```
+- Creates a new DataFrame containing only rows that satisfy the condition
+- Parameters:
+  - `Condition`: Function that takes row index and returns boolean
+- Returns filtered DataFrame
+- Example:
+```pascal
+// Keep only rows where Age > 30
+Filtered := Frame.Filter(function(Row: Integer): Boolean
+  begin
+    Result := Integer(Frame.ValuesByName[Row, 'Age']) > 30;
+  end);
+```
+
+#### Sort
+```pascal
+function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame;
+```
+- Creates a new DataFrame with rows sorted by specified column
+- Parameters:
+  - `ColumnName`: Column to sort by
+  - `Ascending`: Sort direction (True = ascending, False = descending)
+- Returns sorted DataFrame
+
+#### GroupBy
+```pascal
+function GroupBy(const ColumnNames: array of string): TDuckFrame;
+```
+- Groups data by specified columns
+- Parameters:
+  - `ColumnNames`: Array of column names to group by
+- Returns DataFrame with grouped statistics
+- Commonly used with aggregation functions
+
+#### Sample
+```pascal
+function Sample(Count: Integer): TDuckFrame; overload;
+function Sample(Percentage: Double): TDuckFrame; overload;
+```
+- Creates new DataFrame with random sample of rows
+- Two overloads:
+  - By count: Exact number of rows
+  - By percentage: Percentage of total rows (0.0 to 100.0)
+- Returns sampled DataFrame
+
+#### Column Operations
+```pascal
+function RenameColumn(const OldName, NewName: string): TDuckFrame;
+```
+- Creates new DataFrame with renamed column
+- Parameters:
+  - `OldName`: Current column name
+  - `NewName`: New column name
+- Returns DataFrame with renamed column
+
+```pascal
+function DropColumns(const ColumnNames: array of string): TDuckFrame;
+```
+- Creates new DataFrame with specified columns removed
+- Parameters:
+  - `ColumnNames`: Array of column names to remove
+- Returns DataFrame without specified columns
+
+#### Statistical Operations
+```pascal
+function Quantile(const ColumnName: string; 
+                 const Quantiles: array of Double): TDuckFrame;
+```
+- Calculates quantiles for numeric column
+- Parameters:
+  - `ColumnName`: Column to analyze
+  - `Quantiles`: Array of quantile values (0.0 to 1.0)
+- Returns DataFrame with quantile values
+- Raises EDuckDBError for non-numeric columns
+
+```pascal
+function ValueCounts(const ColumnName: string; 
+                    Normalize: Boolean = False): TDuckFrame;
+```
+- Counts frequency of unique values in column
+- Parameters:
+  - `ColumnName`: Column to analyze
+  - `Normalize`: If True, returns proportions instead of counts
+- Returns DataFrame with value frequencies
+
+#### Join Operations
+```pascal
+function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
+```
+- Combines two DataFrames based on common columns
+- Parameters:
+  - `Other`: DataFrame to join with
+  - `Mode`: Join type (Inner, Left, Right, Full)
+- Returns joined DataFrame
+- Join modes:
+  - `jmInner`: Only matching rows
+  - `jmLeftJoin`: All rows from left, matching from right
+  - `jmRightJoin`: All rows from right, matching from left
+  - `jmFullJoin`: All rows from both frames
+- Example:
+```pascal
+var
+  Frame1, Frame2, JoinedFrame: TDuckFrame;
+begin
+  Frame1 := TDuckFrame.CreateBlank(['ID', 'Name', 'Age'], 
+    [dctInteger, dctString, dctInteger]);
+  Frame1.AddRow([1, 'John', 30]);
+  Frame1.AddRow([2, 'Jane', 25]);
+  
+  // Create second frame
+  Frame2 := TDuckFrame.CreateBlank(['ID', 'City', 'Salary'], 
+    [dctInteger, dctString, dctDouble]);
+  Frame2.AddRow([1, 'New York', 75000.0]);
+  Frame2.AddRow([3, 'Boston', 80000.0]);
+  
+    try
+    // Test inner join
+    JoinedFrame := Frame1.Join(Frame2, jmInner);
+    try
+      AssertEquals('Should have 1 row for inner join', 1, JoinedFrame.RowCount);
+      AssertEquals('Should have 4 columns', 4, JoinedFrame.ColumnCount);
+      AssertEquals('Should match on ID=1', 'John', 
+        string(JoinedFrame.ValuesByName[0, 'Name']));
+      AssertEquals('Should include city', 'New York', 
+        string(JoinedFrame.ValuesByName[0, 'City']));
+    finally
+      JoinedFrame.Free;
+    end;
+    
+    // Test left join
+    JoinedFrame := Frame1.Join(Frame2, jmLeftJoin);
+    try
+      AssertEquals('Should have 2 rows for left join', 2, JoinedFrame.RowCount);
+      AssertTrue('Should have null salary for unmatched row', 
+        VarIsNull(JoinedFrame.ValuesByName[1, 'Salary']));
+    finally
+      JoinedFrame.Free;
+    end;
+  finally
+    Frame1.Free;
+    Frame2.Free;
+    end;
+end;
+  
+procedure TDuckDBDataFrameTest.TestJoinFailsWithNoCommonColumns;
+var
+  Frame1, Frame2: TDuckFrame;
+begin
+  Frame1 := TDuckFrame.CreateBlank(['Name', 'Age'], [dctString, dctInteger]);
+  Frame2 := TDuckFrame.CreateBlank(['City', 'Salary'], [dctString, dctDouble]);
+  
+    try
+    try
+      Frame1.Join(Frame2);
+      Fail('Should raise exception when no common columns exist');
+    except
+      on E: EDuckDBError do
+        AssertTrue('Should mention no common columns', 
+          Pos('No common columns', E.Message) > 0);
+    end;
+  finally
+    Frame1.Free;
+    Frame2.Free;
+    end;
+end;
+  try
+procedure TDuckDBDataFrameTest.TestContains;
+var
+  Frame: TDuckFrame;
+  Arr: array of string;
+begin
+  Frame := CreateSampleFrame;
+  try
+    SetLength(Arr, 2);
+    Arr[0] := 'Name';
+    Arr[1] := 'Age';
+    
+    AssertTrue('Should find existing column', Contains(Arr, 'Name'));
+    AssertFalse('Should not find non-existent column', Contains(Arr, 'NonExistent'));
+  finally
+    Frame.Free;
+  end;
+end;
+```
 

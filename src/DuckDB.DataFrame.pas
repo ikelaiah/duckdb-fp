@@ -169,83 +169,8 @@ type
     const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 
   public
-
-    { Default Constructor and destructor }
+    { 1. Constructors: More Constructors }
     constructor Create;
-    destructor Destroy; override;
-    
-    { Core: Column-related helper functions for data access and calculations }
-    function GetColumnCount: Integer;
-    function GetColumnNames: TStringArray;
-    function GetColumn(Index: Integer): TDuckDBColumn;
-    function GetColumnByName(const Name: string): TDuckDBColumn;
-    function GetValue(Row, Col: Integer): Variant;
-    function GetValueByName(Row: Integer; const ColName: string): Variant;
-    function FindColumnIndex(const Name: string): Integer;
-    function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
-
-    { Core: DataFrame operations }
-    procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
-    procedure Clear;                                    // Clear all data
-    procedure Print(MaxRows: Integer = 10);             // Print DataFrame contents
-    
-    { Core: Value conversion helper }
-    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
-    
-    { Core: Union operations }
-    function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-    function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
-    function Distinct: TDuckFrame;
-
-    { IO: File-related operations }
-    procedure SaveToCSV(const FileName: string);       // Export to CSV file
-
-    { Data Preview: Methods for inspecting data samples }
-    function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
-    function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
-
-    { Data Analysis: Helper functions }
-    function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
-    function CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
-
-    { Data Analysis: Methods for examining data structure and statistics }
-    procedure Describe;                                // Show statistical summary
-    function NullCount: TDuckFrame;                    // Count null values per column
-    procedure Info; 
-    
-    { Data Cleaning: Methods for handling missing data }
-    function DropNA: TDuckFrame;                        // Remove rows with any null values
-    function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
-    
-    { Data Manipulation: Methods for filtering and transforming data 
-      Added part of 0.1.0 }
-    function Filter(const ColumnName: string; const Value: Variant): TDuckFrame; overload;
-    function Filter(const ColumnName: string; const CompareOp: string; const Value: Variant): TDuckFrame; overload;
-    function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame; overload;
-    function Sort(const ColumnNames: array of string; const Ascending: array of Boolean): TDuckFrame; overload;
-    function GroupBy(const ColumnNames: array of string): TDuckFrame;
-    function Sample(Count: Integer): TDuckFrame; overload;
-    function Sample(Percentage: Double): TDuckFrame; overload;
-    function RenameColumn(const OldName, NewName: string): TDuckFrame;
-    function DropColumns(const ColumnNames: array of string): TDuckFrame;
-
-    { Stats: Advanced analysis methods }
-    function CorrPearson: TDuckFrame;
-    function CorrSpearman: TDuckFrame;
-    function UniqueCounts(const ColumnName: string): TDuckFrame; // Frequency of each unique value
-    
-    { Plot: ASCII plotting capabilities }
-    procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
-    
-    { Properties }
-    property RowCount: Integer read FRowCount;
-    property ColumnCount: Integer read GetColumnCount;
-    property Columns[Index: Integer]: TDuckDBColumn read GetColumn;
-    property ColumnsByName[const Name: string]: TDuckDBColumn read GetColumnByName;
-    property Values[Row, Col: Integer]: Variant read GetValue;
-    property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
-
-    { Constructors: More Constructors }
     constructor CreateBlank(const AColumnNames: array of string;
                            const AColumnTypes: array of TDuckDBColumnType); overload;
     constructor CreateFromDuckDB(const ADatabase, ATableName: string); overload;
@@ -254,19 +179,86 @@ type
                               const ADelimiter: Char = ','); overload;
     constructor CreateFromParquet(const AFileName: string); overload;
     constructor CreateFromParquet(const Files: array of string); overload;
-                            
-    { Methods for manual construction }
-    procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
+    destructor Destroy; override;
+    
+
+    { 2. Data Access Methods }
+    function GetColumnCount: Integer;
+    function GetColumnNames: TStringArray;
+    function GetColumn(Index: Integer): TDuckDBColumn;
+    function GetColumnByName(const Name: string): TDuckDBColumn;
+    function GetValue(Row, Col: Integer): Variant;
+    function GetValueByName(Row: Integer; const ColName: string): Variant;
+    function FindColumnIndex(const Name: string): Integer;
+    procedure SetValue(const ARow: Integer; const AColumnName: string; const AValue: Variant);
+
+    { 3. Properties }
+    property RowCount: Integer read FRowCount;
+    property ColumnCount: Integer read GetColumnCount;
+    property Columns[Index: Integer]: TDuckDBColumn read GetColumn;
+    property ColumnsByName[const Name: string]: TDuckDBColumn read GetColumnByName;
+    property Values[Row, Col: Integer]: Variant read GetValue;
+    property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValueByName; default;
+
+    { 4. Data Manipulation }
+    { 4.1. Row Operations}
+    procedure Clear;                                    // Clear all data
     procedure AddRow(const AValues: array of Variant);
-    procedure SetValue(const ARow: Integer; const AColumnName: string; 
-                       const AValue: Variant);
+    { 4.1.1. Data Cleaning: Methods for handling missing data }
+    function DropNA: TDuckFrame;                        // Remove rows with any null values
+    function FillNA(const Value: Variant): TDuckFrame;  // Fill null values
 
-    function ValueCounts(const ColumnName: string; 
-      Normalize: Boolean = False): TDuckFrame;
-    function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
+    { 4.2. Column Operations }
+    procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
+    function DropColumns(const ColumnNames: array of string): TDuckFrame;
+    function RenameColumn(const OldName, NewName: string): TDuckFrame;
+    function Select(const ColumnNames: array of string): TDuckFrame;  // Select columns
+
+    { 4.3. Filtering and sorting }
+    function Filter(const ColumnName: string; const Value: Variant): TDuckFrame; overload;
+    function Filter(const ColumnName: string; const CompareOp: string; const Value: Variant): TDuckFrame; overload;
+    function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame; overload;
+    function Sort(const ColumnNames: array of string; const Ascending: array of Boolean): TDuckFrame; overload;
+
+    { 5. Data Analysis }
+    { 5.1. Data Preview: Methods for inspecting data samples }
+    function Head(Count: Integer = 5): TDuckFrame;     // Get first N rows
+    function Tail(Count: Integer = 5): TDuckFrame;     // Get last N rows
+    function Sample(Count: Integer): TDuckFrame; overload;
+    function Sample(Percentage: Double): TDuckFrame; overload;
+    
+
+    { 5.2. Statistical Analysis }
+    function ValueCounts(const ColumnName: string; Normalize: Boolean = False): TDuckFrame;
     function Quantile(const ColumnName: string; const Quantiles: array of Double): TDuckFrame;
+    function CorrPearson: TDuckFrame;
+    function CorrSpearman: TDuckFrame;
+    function UniqueCounts(const ColumnName: string): TDuckFrame; // Frequency of each unique value
+    function GroupBy(const ColumnNames: array of string): TDuckFrame;
+    
+    { 6. Data Combination }
+    function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
+    function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+    function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
+    function Distinct: TDuckFrame;
 
+    { 7. IO }
+    procedure LoadFromResult(AResult: pduckdb_result);  // Load data from DuckDB result
+    procedure SaveToCSV(const FileName: string);       // Export to CSV file
 
+    { 8. Display & Descriptive Aalysis }
+    procedure Print(MaxRows: Integer = 10);             // Print DataFrame contents
+    procedure Describe;                                // Show statistical summary
+    procedure Info; 
+    procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
+    function NullCount: TDuckFrame;                    // Count null values per column
+    
+    {9. Helper Methods}
+    { 9.1. Core: Value conversion helper }
+    function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
+    { 9.2. Data Analysis: Helper functions }
+    function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
+    function CalculatePercentile(const RealValues: array of Double; Percentile: Double): Double;
   end;
 
 { Helper function for sorting }
@@ -1142,7 +1134,7 @@ begin
   end;
 end;
 
-function TDuckFrame.CalculatePercentile(const Values: array of Double; Percentile: Double): Double;
+function TDuckFrame.CalculatePercentile(const RealValues: array of Double; Percentile: Double): Double;
 var
   N: Integer;
   Position: Double;
@@ -1158,11 +1150,11 @@ begin
     ClampedPercentile := 1;
 
   // Handle empty or single-value arrays
-  N := Length(Values);
+  N := Length(RealValues);
   if N = 0 then
     Exit(0);
   if N = 1 then
-    Exit(Values[0]);
+    Exit(RealValues[0]);
 
   // Calculate interpolation position
   Position := ClampedPercentile * (N - 1);
@@ -1171,9 +1163,9 @@ begin
   
   // Handle edge case and interpolate
   if Lower + 1 >= N then
-    Result := Values[N - 1]
+    Result := RealValues[N - 1]
   else
-    Result := Values[Lower] + Delta * (Values[Lower + 1] - Values[Lower]);
+    Result := RealValues[Lower] + Delta * (RealValues[Lower + 1] - RealValues[Lower]);
 end;
 
 procedure TDuckFrame.Describe;

@@ -276,9 +276,9 @@ end;
 
 ## API Reference
 
-- [DuckDB.Wrapper API Reference](DuckDB.Wrapper-API-Ref.md)
-- [DuckDB.DataFrame API Reference](DuckDB.DataFrame-API-Ref.md)
-- [DuckDB.SampleData API Reference](DuckDB.SampleData-API-Ref.md)
+- [DuckDB.Wrapper API Reference](docs/DuckDB.Wrapper.md)
+- [DuckDB.DataFrame API Reference](docs/DuckDB.DataFrame.md)
+- [DuckDB.SampleData API Reference](docs/DuckDB.SampleData.md)
 
 ## Features
 
