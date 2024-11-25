@@ -250,10 +250,9 @@ type
     { 8. Display & Descriptive Aalysis }
     procedure Print(MaxRows: Integer = 10);             // Print DataFrame contents
     procedure Describe;                                // Show statistical summary
-    procedure Info; 
-    procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
     function NullCount: TDuckFrame;                    // Count null values per column
-    
+    procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
+    procedure Info;                                    // Show DataFrame information
     {9. Helper Methods}
     { 9.1. Core: Value conversion helper }
     function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;

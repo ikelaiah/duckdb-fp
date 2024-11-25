@@ -19,38 +19,58 @@
       - [Best Practices using Constructors](#best-practices-using-constructors)
     - [2. Data Access Methods](#2-data-access-methods)
     - [3. Properties](#3-properties)
-    - [4. Data Manipulation Methods](#4-data-manipulation-methods)
+    - [4. Data Manipulation Methods - Row Operations](#4-data-manipulation-methods---row-operations)
       - [4.1. Row Operations](#41-row-operations)
-      - [4.1. Data Cleaning: Methods for handling missing data](#41-data-cleaning-methods-for-handling-missing-data)
+        - [Clear](#clear)
+        - [AddRow](#addrow)
+      - [4.1.1 Data Cleaning: Methods for handling missing data](#411-data-cleaning-methods-for-handling-missing-data)
+        - [DropNA](#dropna)
+        - [FillNA](#fillna)
       - [4.2. Column Operations](#42-column-operations)
+        - [AddColumn](#addcolumn)
+        - [DropColumns](#dropcolumns)
+        - [RenameColumn](#renamecolumn)
+        - [Select](#select)
       - [4.3. Filtering and sorting](#43-filtering-and-sorting)
+        - [Filter](#filter)
+        - [Sort](#sort)
     - [5. Data Analysis](#5-data-analysis)
       - [5.1. Data Preview: Methods for inspecting data samples](#51-data-preview-methods-for-inspecting-data-samples)
+        - [Head](#head)
+        - [Tail](#tail)
+        - [Sample](#sample)
+        - [Sample (Percentage)](#sample-percentage)
       - [5.2. Statistical Analysis](#52-statistical-analysis)
-        - [5.2.1. ValueCounts](#521-valuecounts)
-        - [5.2.2. UniqueCounts](#522-uniquecounts)
-        - [5.2.3. GroupBy](#523-groupby)
-        - [5.2.4. Quantile](#524-quantile)
-        - [5.2.5. PearsonCorrelation](#525-pearsoncorrelation)
-        - [5.2.6. SpearmanCorrelation](#526-spearmancorrelation)
-      - [5.2.7. When to use each correlation method](#527-when-to-use-each-correlation-method)
+        - [ValueCounts](#valuecounts)
+        - [UniqueCounts](#uniquecounts)
+        - [GroupBy](#groupby)
+        - [Quantile](#quantile)
+        - [CorrPearson](#corrpearson)
+        - [CorrSpearman](#corrspearman)
+      - [5.3. When to use each correlation method](#53-when-to-use-each-correlation-method)
     - [6. Data Combination](#6-data-combination)
       - [6.1. Join](#61-join)
-      - [6.2. Unions](#62-unions)
-    - [Examples](#examples)
-    - [Implementation Details](#implementation-details)
-    - [Type Conversion](#type-conversion)
-    - [Notes](#notes)
+      - [Union Mode](#union-mode)
+        - [Union](#union)
+        - [UnionAll](#unionall)
+        - [Distinct](#distinct)
+        - [Examples](#examples)
+      - [Implementation Details](#implementation-details)
+      - [Type Conversion](#type-conversion)
+      - [Notes](#notes)
     - [7. Input and Output Methods](#7-input-and-output-methods)
+      - [LoadFromResult](#loadfromresult)
+      - [SaveToCSV](#savetocsv)
     - [8. Display \& Descriptive Analysis](#8-display--descriptive-analysis)
+      - [Print](#print)
+      - [Describe](#describe)
+      - [NullCount](#nullcount)
+      - [PlotHistogram](#plothistogram)
+      - [Info](#info)
     - [9. Helper Methods](#9-helper-methods)
-    - [Output Methods](#output-methods)
-    - [Data Analysis Methods](#data-analysis-methods)
-    - [Histogram Generation](#histogram-generation)
-    - [Statistical Analysis](#statistical-analysis)
-  - [File Operations](#file-operations)
-    - [CSV Export](#csv-export)
-  - [DataFrame Combination Methods](#dataframe-combination-methods)
+      - [TryConvertValue](#tryconvertvalue)
+      - [CalculateColumnStats](#calculatecolumnstats)
+      - [CalculatePercentile](#calculatepercentile)
 
 ## TDuckFrame
 
@@ -588,14 +608,18 @@ property ValuesByName[Row: Integer; const ColName: string]: Variant read GetValu
 - Default property for accessing values by name.
 
 
-### 4. Data Manipulation Methods
+### 4. Data Manipulation Methods - Row Operations
 
 #### 4.1. Row Operations
+
+##### Clear
 
 ```pascal
 procedure Clear;
 ```
 - Removes all data from the DataFrame
+
+##### AddRow
 
 ```pascal
 procedure AddRow(const AValues: array of Variant);
@@ -606,7 +630,30 @@ procedure AddRow(const AValues: array of Variant);
 - Automatic type conversion is attempted
 - Raises `EDuckDBError` if value count doesn't match column count
 
-#### 4.1. Data Cleaning: Methods for handling missing data
+**Example**
+
+```pascal
+var
+  Frame: TDuckFrame;
+begin
+  Frame := TDuckFrame.CreateBlank(
+    ['Timestamp', 'Date', 'Time'],
+    [dctTimestamp, dctDate, dctTime]
+  );
+  
+  Frame.AddRow([
+    EncodeDateTime(2023, 11, 25, 10, 30, 0, 0),  // Timestamp
+    EncodeDate(2023, 11, 25),                     // Date
+    EncodeTime(10, 30, 0, 0)                      // Time
+  ]);
+  
+  Frame.Print;  // Will display formatted date/time values
+end;
+```
+
+#### 4.1.1 Data Cleaning: Methods for handling missing data
+
+##### DropNA
 
 ```pascal
 function DropNA: TDuckFrame;
@@ -614,17 +661,20 @@ function DropNA: TDuckFrame;
 - Creates new DataFrame with rows containing any NULL values removed
 - Returns new DataFrame with complete cases only
 
+##### FillNA
+
 ```pascal
 function FillNA(const Value: Variant): TDuckFrame;
 ```
 - Creates new DataFrame with NULL values replaced
 - Parameters:
   - `Value`: Value to use for replacement
-- Returns new DataFrame with filled values
+  - Returns new DataFrame with filled values
 
 
 #### 4.2. Column Operations
 
+##### AddColumn
 ```pascal
 procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
 ```
@@ -634,6 +684,8 @@ procedure AddColumn(const AName: string; AType: TDuckDBColumnType);
   - `AType`: The data type of the new column.
 - Raises:
   - An exception if a column with the same name already exists.
+
+##### DropColumns
 
 ```pascal
 function DropColumns(const ColumnNames: array of string): TDuckFrame;
@@ -645,6 +697,8 @@ function DropColumns(const ColumnNames: array of string): TDuckFrame;
   - A new `TDuckFrame` instance with the specified columns removed.
 - Raises:
   - An exception if any of the specified column names do not exist.
+
+##### RenameColumn
 
 ```pascal
 function RenameColumn(const OldName, NewName: string): TDuckFrame;
@@ -659,6 +713,8 @@ function RenameColumn(const OldName, NewName: string): TDuckFrame;
   - An exception if the `OldName` does not exist or if `NewName` already exists.
 
 
+##### Select
+
 ```pascal
 function Select(const Columns: array of string): TDuckFrame;
 ```
@@ -667,6 +723,8 @@ function Select(const Columns: array of string): TDuckFrame;
 
 
 #### 4.3. Filtering and sorting
+
+##### Filter
 
 ```pascal
 function Filter(const ColumnName: string; const Value: Variant): TDuckFrame; overload;
@@ -678,6 +736,8 @@ function Filter(const ColumnName: string; const CompareOp: string; const Value: 
 ```
 - Filters the DataFrame based on a comparison operator (e.g., '=', '<', '>', 'LIKE') applied to the specified column.
     
+##### Sort
+
 ```pascal
 function Sort(const ColumnName: string; Ascending: Boolean = True): TDuckFrame; overload;
 ```
@@ -693,13 +753,15 @@ function Sort(const ColumnNames: array of string; const Ascending: array of Bool
 
 #### 5.1. Data Preview: Methods for inspecting data samples
 
-
+##### Head
 ```pascal
 function Head(Count: Integer = 5): TDuckFrame;
 ```
 - Returns a new DataFrame with the first N rows
 - Default count is 5
 - Caller must free the returned DataFrame
+
+##### Tail
 
 ```pascal
 function Tail(Count: Integer = 5): TDuckFrame;
@@ -708,6 +770,8 @@ function Tail(Count: Integer = 5): TDuckFrame;
 - Default count is 5
 - Caller must free the returned DataFrame
 
+
+##### Sample
 
 ```pascal
 function Sample(Count: Integer): TDuckFrame; overload;
@@ -725,6 +789,8 @@ function Sample(Count: Integer): TDuckFrame; overload;
     SampledFrame.Free;
   end;
   ```
+
+##### Sample (Percentage)
 
 ```pascal
 function Sample(Percentage: Double): TDuckFrame; overload;
@@ -745,7 +811,7 @@ function Sample(Percentage: Double): TDuckFrame; overload;
 
 #### 5.2. Statistical Analysis
 
-##### 5.2.1. ValueCounts
+##### ValueCounts
 
 ```pascal
 function ValueCounts(const ColumnName: string; Normalize: Boolean = False): TDuckFrame;
@@ -769,7 +835,7 @@ function ValueCounts(const ColumnName: string; Normalize: Boolean = False): TDuc
   end;
   ```
 
-##### 5.2.2. UniqueCounts
+##### UniqueCounts
 
 ```pascal
 function UniqueCounts(const ColumnName: string): TDuckFrame;
@@ -792,7 +858,8 @@ function UniqueCounts(const ColumnName: string): TDuckFrame;
   end;
   ```
 
-##### 5.2.3. GroupBy
+##### GroupBy
+
 ```pascal
 function GroupBy(const ColumnNames: array of string): TDuckFrame;
 ```
@@ -815,7 +882,7 @@ function GroupBy(const ColumnNames: array of string): TDuckFrame;
   end;
   ```
 
-##### 5.2.4. Quantile
+##### Quantile
 
 ```pascal
 function Quantile(const ColumnName: string; const Quantiles: array of Double): TDuckFrame;
@@ -839,7 +906,7 @@ function Quantile(const ColumnName: string; const Quantiles: array of Double): T
   end;
   ```
 
-##### 5.2.5. PearsonCorrelation
+##### CorrPearson
 
 ```pascal
 function CorrPearson: TDuckFrame;
@@ -851,7 +918,7 @@ function CorrPearson: TDuckFrame;
 - Sensitive to outliers
 - Caller must free the returned DataFrame
 
-##### 5.2.6. SpearmanCorrelation
+##### CorrSpearman
 
 ```pascal
 function CorrSpearman: TDuckFrame;
@@ -889,7 +956,7 @@ begin
 end;
 ```
 
-#### 5.2.7. When to use each correlation method
+#### 5.3. When to use each correlation method
 
 **Pearson Correlation:**
 - Variables have linear relationships
@@ -928,7 +995,6 @@ function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
 - **Full Outer Join (`jmFullJoin`):**
   - Returns all rows when there is a match in one of the DataFrames. Rows from both DataFrames that do not have matches will contain nulls.
 
-
 - **Example usage**:
 
   ```pascal
@@ -961,7 +1027,7 @@ function Join(Other: TDuckFrame; Mode: TJoinMode = jmLeftJoin): TDuckFrame;
   end;
   ```
 
-#### 6.2. Unions
+#### Union Mode
 
 The `TUnionMode` enumeration controls how DataFrame combinations handle column matching:
 
@@ -974,12 +1040,16 @@ type
   );
 ```
 
+##### Union
+
 ```pascal
 function Union(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
 ```
 Combines two DataFrames and removes duplicate rows (similar to SQL's UNION).
 - Internally calls `UnionAll` followed by `Distinct`
 - Returns a new DataFrame with combined unique rows
+
+##### UnionAll
 
 ```pascal
 function UnionAll(const Other: TDuckFrame; Mode: TUnionMode = umStrict): TDuckFrame;
@@ -991,6 +1061,8 @@ Combines two DataFrames keeping all rows including duplicates (similar to SQL's 
   - `umAll`: Includes all columns, fills missing values with NULL
 - Returns a new DataFrame with all rows from both frames
 
+##### Distinct
+
 ```pascal
 function Distinct: TDuckFrame;
 ```
@@ -999,7 +1071,7 @@ Removes duplicate rows from the DataFrame.
 - Considers all columns when determining uniqueness
 - Returns a new DataFrame with unique rows only
 
-### Examples
+##### Examples
 
 ```pascal
 var
@@ -1043,21 +1115,21 @@ begin
 end;
 ```
 
-### Implementation Details
+#### Implementation Details
 
 The combination operations use `THashSet` for efficient unique value tracking:
 - Column name uniqueness in `umAll` mode
 - Row uniqueness in `Distinct` operation
 - Hash-based lookups provide O(1) average case complexity
 
-### Type Conversion
+#### Type Conversion
 When combining DataFrames with different column types:
 - Compatible types are automatically converted (e.g., Integer to Float)
 - Incompatible conversions result in NULL values
 - String columns can accept any type through string conversion
 - Type precedence follows SQL conventions
 
-### Notes
+#### Notes
 - All union operations create a new DataFrame that must be freed by the caller
 - NULL values are preserved and handled properly in all operations
 - Column name matching is case-sensitive
@@ -1065,49 +1137,193 @@ When combining DataFrames with different column types:
 
 ### 7. Input and Output Methods
 
+#### LoadFromResult
 
-
-### 8. Display & Descriptive Analysis
-
-
-
-### 9. Helper Methods
-
-
-
-**Example**
+> [!NOTE]
+> This method is useful when working with DuckDB's C API.
+> 
+> For simplicity, consider using 
+> - the `TDuckFrame.CreateFromDuckDB(const ADatabase, ATableName: string);`
+>   constructor to get a `TDuckFrame`.
+> - Or the `TDuckDBConnection` class for simple DB operations.
 
 ```pascal
-var
-  Frame: TDuckFrame;
+procedure LoadFromResult(AResult: pduckdb_result);
+```
+
+- **Useful when working with DuckDB's C API**.
+- A convenience method to load data `duckdb_result` (DuckDB's C API) into a DataFrame.
+- Automatically maps result columns to DataFrame columns.
+- Handles various data types supported by DuckDB.
+- Ensures DataFrame structure matches the DuckDB result schema.
+
+- Parameters:
+  - `AResult`: Pointer to the DuckDB result object containing the query data.
+
+- **Example**:
+
+```pascal
+program LoadFromDuckDBResult;
+
+{$mode objfpc}{$H+}{$J-}
+
+(*
+  
+  This example demonstrates how to get a TDuckFrame when using DuckDB C API:
+
+  1. Creating an in-memory DuckDB database
+  2. Opening a connection
+  3. Creating a table and inserting data
+  4. Querying the table and displaying results
+  5. Proper cleanup/closing of resources
+
+  Note: 
+    - This demo uses an in-memory database using DuckDB C API. 
+    - The data will not persist between program runs.
+    - For simplicity, consider using 
+      - the TDuckFrame.CreateFromDuckDB(const ADatabase, ATableName: string);
+        constructor to get a TDuckFrame.
+      - Or the TDuckDBConnection class for simple DB operations.
+*)
+
+uses
+  SysUtils, libduckdb, DuckDB.DataFrame;
+
+// Procedure to check the DuckDB state and handle errors
+procedure CheckError(state: duckdb_state; const msg: string);
 begin
-  Frame := TDuckFrame.CreateBlank(
-    ['Timestamp', 'Date', 'Time'],
-    [dctTimestamp, dctDate, dctTime]
-  );
+  if state = DuckDBError then
+  begin
+    WriteLn('Error: ', msg);
+    Halt(1); // Terminate the program if an error occurs
+  end;
+end;
+
+var
+  db: duckdb_database;        // DuckDB database handle
+  conn: duckdb_connection;    // DuckDB connection handle
+  result: duckdb_result;      // DuckDB query result
+  state: duckdb_state;        // DuckDB state to track operations
+  Results_DF: TDuckFrame;     // DataFrame to store query results
+
+begin
+  try
+    // Step 1: Create an in-memory DuckDB database
+    state := duckdb_open(nil, @db); // Open a new DuckDB database in memory
+    CheckError(state, 'Failed to open database');
+
+    // Step 2: Create a connection to the database
+    state := duckdb_connect(db, @conn); // Connect to the in-memory DuckDB database
+    CheckError(state, 'Failed to connect to database');
+
+    // Step 3: Create a table and insert data
+    WriteLn('Creating table and inserting data...');
+    state := duckdb_query(conn,
+      'CREATE TABLE IF NOT EXISTS users(' +
+      'id INTEGER, ' +
+      'name VARCHAR, ' +
+      'age INTEGER);' +
+      'INSERT INTO users VALUES ' +
+      '(1, ''Alice'', 25), ' +
+      '(2, ''Bob'', 30), ' +
+      '(3, ''Charlie'', 35);',
+      @result); // Execute SQL to create table and insert sample data
+    CheckError(state, 'Failed to create table and insert data');
+    duckdb_destroy_result(@result); // Clean up the result object
+
+    // Step 4: Query the table
+    WriteLn('Querying table...');
+    state := duckdb_query(conn,
+      'SELECT * FROM users ORDER BY id;',
+      @result); // Execute SQL to retrieve data from the table
+    CheckError(state, 'Failed to query table');
+
+    try
+      // Create a new DataFrame to hold the query results
+      Results_DF := TDuckFrame.Create;
+
+      // Load data from DuckDB result into the DataFrame
+      Results_DF.LoadFromResult(@result);
+
+      // Print the top 5 rows of the DataFrame
+      Results_DF.Head
+                .Print;
+    finally
+      // Ensure the DataFrame is freed to release memory
+      Results_DF.Free;
+    end;
+
+    // Delete all rows from the table before closing
+    WriteLn;
+    WriteLn('Deleting all rows from the table...');
+    duckdb_destroy_result(@result);  // Destroy previous result before new query
+    
+    state := duckdb_query(conn, 'DELETE FROM users;', @result); // Execute SQL to delete all rows
+    CheckError(state, 'Failed to delete rows from table');
+
+  finally
+    // Step 5: Clean up resources
+    duckdb_destroy_result(@result); // Destroy the final result object
+    duckdb_disconnect(@conn);       // Disconnect from the database
+    duckdb_close(@db);             // Close the database connection
+  end;
+
+  // Pause console to allow user to see output
+  WriteLn('Press enter to quit ...');
+  ReadLn; // Wait for user input
+end.
+``` 
+
+#### SaveToCSV
+
+```pascal
+procedure SaveToCSV(const FileName: string);
+```
+Saves the DataFrame to a CSV file following RFC 4180 specifications.
+
+Features:
+- Full RFC 4180 compliance
+- Handles special cases:
+  - Multi-line text fields (preserved with proper quoting)
+  - Fields containing commas
+  - Fields containing quotes (escaped with double quotes)
+  - NULL values (written as empty fields)
+  - Empty string values
+- Uses standard CRLF line endings
+- Properly escapes and quotes field values when needed
+
+Example:
+```pascal
+var
+  DF: TDuckFrame;
+begin
+  // ... populate DataFrame ...
   
-  Frame.AddRow([
-    EncodeDateTime(2023, 11, 25, 10, 30, 0, 0),  // Timestamp
-    EncodeDate(2023, 11, 25),                     // Date
-    EncodeTime(10, 30, 0, 0)                      // Time
-  ]);
-  
-  Frame.Print;  // Will display formatted date/time values
+  // Save to CSV file
+  DF.SaveToCSV('output.csv');
 end;
 ```
 
-x
+Output format example:
+```csv
+id,name,description
+1,"Simple text","Normal field"
+2,"Text with
+multiple lines","Another field"
+3,"Text with ""quotes""","Text with, comma"
+4,,"Empty field (NULL)"
+```
 
+### 8. Display & Descriptive Analysis
 
-
-### Output Methods
+#### Print
 
 ```pascal
 procedure Print;
 ```
 - Prints the DataFrame to console in a formatted table
 
-### Data Analysis Methods
+#### Describe
 
 ```pascal
 procedure Describe;
@@ -1160,6 +1376,8 @@ age              1          0.750         33.333    10.408    25.000    27.500  
 salary           1          0.750         68333.333 16072.751 50000.000 62500.000 75000.000 77500.000 80000.000 -1.190     0.000
 ```
 
+#### NullCount  
+
 ```pascal
 function NullCount: TDuckFrame;
 ```
@@ -1167,16 +1385,8 @@ function NullCount: TDuckFrame;
 - Result has a single row with the same column names as the original
 - Caller must free the returned DataFrame
 
-```pascal
-procedure Info;
-```
-- Displays basic information about the DataFrame including:
-  - Number of rows and columns
-  - Column names and their data types
-  - Number of null values per column
-  - Memory usage in both bytes and MB
 
-### Histogram Generation
+#### PlotHistogram
 
 ```pascal
 procedure PlotHistogram(const ColumnName: string; Bins: Integer = 10);
@@ -1206,58 +1416,37 @@ Total count: 5
 [44.80-49.00]   |###   1
 ```
 
-
-### Statistical Analysis
-
-
-
-## File Operations
-
-### CSV Export
+#### Info
 
 ```pascal
-procedure SaveToCSV(const FileName: string);
+procedure Info;
 ```
-Saves the DataFrame to a CSV file following RFC 4180 specifications.
+- Displays basic information about the DataFrame including:
+  - Number of rows and columns
+  - Column names and their data types
+  - Number of null values per column
+  - Memory usage in both bytes and MB
 
-Features:
-- Full RFC 4180 compliance
-- Handles special cases:
-  - Multi-line text fields (preserved with proper quoting)
-  - Fields containing commas
-  - Fields containing quotes (escaped with double quotes)
-  - NULL values (written as empty fields)
-  - Empty string values
-- Uses standard CRLF line endings
-- Properly escapes and quotes field values when needed
+### 9. Helper Methods
 
-Example:
+
+#### TryConvertValue
+
 ```pascal
-var
-  DF: TDuckFrame;
-begin
-  // ... populate DataFrame ...
-  
-  // Save to CSV file
-  DF.SaveToCSV('output.csv');
-end;
+function TryConvertValue(const Value: Variant; FromType, ToType: TDuckDBColumnType): Variant;
 ```
+- **Note:** This function assists in converting values between different data types and is intended for internal use by other methods. **Users typically do not need to call this function directly**.
+    
+#### CalculateColumnStats
 
-Output format example:
-```csv
-id,name,description
-1,"Simple text","Normal field"
-2,"Text with
-multiple lines","Another field"
-3,"Text with ""quotes""","Text with, comma"
-4,,"Empty field (NULL)"
+```pascal
+function CalculateColumnStats(const Col: TDuckDBColumn): TColumnStats;
 ```
+- **Note:** Computes statistical metrics for a given column. **Primarily used by data analysis functions**.
 
-## DataFrame Combination Methods
+#### CalculatePercentile
 
-
-
-
-
-
-
+```pascal
+function CalculatePercentile(const RealValues: array of Double; Percentile: Double): Double;
+```
+- **Note:** Calculates the specified percentile for a set of real numbers. **Used internally for statistical calculations**.
