@@ -272,7 +272,7 @@ end;
 
 - Check the [examples folder](examples/) for more detailed examples
 - Read the API documentation for other features
-- Check the [TESTING.md](TESTING.md) file for information on how to run and maintain the test suite
+- Check the [TESTING.md](docs/TESTING.md) file for information on how to run and maintain the test suite
 
 ## 📑 API Reference
 
