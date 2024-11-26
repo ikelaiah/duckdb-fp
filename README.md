@@ -140,20 +140,19 @@ var
   DF: TDuckFrame;
 
 begin
+  // Basic usage - default settings (has headers, comma delimiter)
+  DF := TDuckFrame.CreateFromCSV('data.csv');
   try
-    // Basic usage - default settings (has headers, comma delimiter)
-    DF := TDuckFrame.CreateFromCSV('data.csv');
-    try
-      DF.Print;  // Display the data
-      WriteLn;
+    DF.Print;  // Display the data
+    WriteLn;
 
-      DF.Describe; // Show summary statistics
-      WriteLn;
+    DF.Describe; // Show summary statistics
+    WriteLn;
 
-      DF.UniqueCounts('country').Print; // Show unique counts of country
-    finally
-      DF.Free;
-    end;
+    DF.UniqueCounts('country').Print; // Show unique counts of country
+  finally
+    DF.Free;
+  end;
 end.
 ```
 
