@@ -137,35 +137,24 @@ Load data from CSV files and analyze it:
 
 ```pascal
 var
-  DB: TDuckDBConnection;
-  Frame: TDuckFrame;
+  DF: TDuckFrame;
+
 begin
-  DB := TDuckDBConnection.Create;
   try
-    DB.Open();
-    
-    // Read CSV file into DataFrame
-    Frame := DB.ReadCSV('data.csv');
+    // Basic usage - default settings (has headers, comma delimiter)
+    DF := TDuckFrame.CreateFromCSV('data.csv');
     try
-      // Basic exploration
-      Frame.Head(5);                  // Show first 5 rows
-      
-      // Check for missing data
-      Frame.NullCount.Print;
-      
-      // Get basic statistics
-      Frame.Describe;
-      
-      // Save processed data
-      Frame.SaveToCSV('processed.csv');
-      
+      DF.Print;  // Display the data
+      WriteLn;
+
+      DF.Describe; // Show summary statistics
+      WriteLn;
+
+      DF.UniqueCounts('country').Print; // Show unique counts of country
     finally
-      Frame.Free;
+      DF.Free;
     end;
-  finally
-    DB.Free;
-  end;
-end;
+end.
 ```
 
 ### 📄 Working with Parquet Files
