@@ -29,7 +29,7 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
 
 ## ⚠️ Work in Progress
 
-This project is currently under active development. Do expect bugs, missing features and API changes.
+This project is currently under active development. **Do expect** bugs, missing features and API changes.
 
 Current development focus:
 - [ ] Better DataFrame functionality
