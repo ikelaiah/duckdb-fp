@@ -324,8 +324,8 @@ end;
     - Filter rows based on column values and comparison operators (`Filter`).
     - Sort DataFrames by one or multiple columns in ascending or descending order (`Sort`).
 
-- **Data Preview and Sampling 👀**
-  - View the first few rows (`Head`) or the last few rows (`Tail`) of the DataFrame.
+- **Sampling 📊**
+  - Sample the first few rows (`Head`) or the last few rows (`Tail`) of the DataFrame.
   - Retrieve random samples of data either by count or percentage (`Sample`).
 
 - **Descriptive Statistics and Information 📈**
