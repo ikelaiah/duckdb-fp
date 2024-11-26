@@ -213,8 +213,8 @@ Frame.Info;
 Frame.NullCount.Print;
 
 // First/last rows
-Frame.Head(5);  // First 5 rows
-Frame.Tail(5);  // Last 5 rows
+Frame.Head(5).Print;  // First 5 rows
+Frame.Tail(5).Print;  // Last 5 rows
 
 // Correlation analysis
 Frame.CorrPearson.Print;  // Pearson correlation
