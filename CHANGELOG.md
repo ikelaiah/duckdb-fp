@@ -5,7 +5,7 @@ All notable changes to the DuckDB Free Pascal Wrapper project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2025-08-02
+## [1.0.1] - 2025-08-08
 
 ### 🚀 Major Upgrade: DuckDB API 1.3.2 Compatibility
 
@@ -26,6 +26,8 @@ This release represents a significant upgrade to support the latest DuckDB C Hea
   - Improved test method naming with `_ShouldThrowException` suffix for clarity
 
 ### Changed
+- **Lazarus pagkage**
+  - Updated to version 1.0.1
 - **API Updates**
   - Updated `DUCKDB_API` macro to `DUCKDB_C_API` following DuckDB 1.3.2 standards
   - Enhanced `libduckdb.pas` with all new functions and types from DuckDB 1.3.2
@@ -59,12 +61,6 @@ This release represents a significant upgrade to support the latest DuckDB C Hea
   - Improved error handling and exception management
   - Enhanced memory management in join operations
   - Better type safety and null handling
-
-### Performance
-- **Join Operations**
-  - Optimized join algorithms with proper conditional execution
-  - Improved memory allocation strategies for large datasets
-  - Enhanced data copying efficiency in join results
 
 ### Developer Experience
 - **Clear Test Results**
