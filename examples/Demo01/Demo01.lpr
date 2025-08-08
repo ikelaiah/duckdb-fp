@@ -98,4 +98,9 @@ begin
     duckdb_disconnect(@conn);
     duckdb_close(@db);
   end;
+
+  // Pause console
+  WriteLn('Press enter to quit');
+  ReadLn;
+
 end.

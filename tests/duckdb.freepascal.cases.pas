@@ -33,26 +33,26 @@ type
   published
     // Constructor Tests
     procedure TestCreateBlank;
-    procedure TestCreateBlankMismatchedArrays;
+    procedure TestCreateBlankMismatchedArrays_ShouldThrowException;
     procedure TestCreateFromCSVWithHeaders;
     procedure TestCreateFromCSVWithoutHeaders;
     procedure TestCreateFromCSVWithDifferentDelimiter;
     procedure TestCreateFromDuckDB;
 
     // Basic Operations
-    procedure TestAddColumnDuplicateFails;
-    procedure TestAddRowMismatchedValuesFails;
+    procedure TestAddColumnDuplicateFails_ShouldThrowException;
+    procedure TestAddRowMismatchedValuesFails_ShouldThrowException;
     procedure TestSetValue;
     procedure TestClear;
-    procedure TestGetNonExistentColumnFails;
+    procedure TestGetNonExistentColumnFails_ShouldThrowException;
     procedure TestGetColumnNames;
     procedure TestFindColumnIndex;
     procedure TestDateTimeArrays;
 
     // Data Access
     procedure TestHead;
-    procedure TestOutOfRangeValuesByNameFails;
-    procedure TestOutOfRangeValuesFails;
+    procedure TestOutOfRangeValuesByNameFails_ShouldThrowException;
+    procedure TestOutOfRangeValuesFails_ShouldThrowException;
 
     // Data Manipulation
     procedure TestUnion;
@@ -77,9 +77,9 @@ type
     procedure TestSaveToCSV;
 
     // Error Handling
-    procedure TestInvalidColumnAccessFails;
-    procedure TestInvalidRowAccessFails;
-    procedure TestMissingCSVFileFails;
+    procedure TestInvalidColumnAccessFails_ShouldThrowException;
+    procedure TestInvalidRowAccessFails_ShouldThrowException;
+    procedure TestMissingCSVFileFails_ShouldThrowException;
 
     // Type Conversion
     procedure TestTryConvertValue;
@@ -93,7 +93,7 @@ type
     procedure TestCreateFromSingleParquet;
     procedure TestCreateFromMultipleParquet;
     procedure TestCreateFromNonParquetExtension;
-    procedure TestMissingParquetFileFails;
+    procedure TestMissingParquetFileFails_ShouldThrowException;
 
     // Data Manipulation
     procedure TestFilter;
@@ -106,12 +106,12 @@ type
     
     // Quantile Tests
     procedure TestQuantile;
-    procedure TestQuantileFailsWithNonNumericColumn;
-    procedure TestQuantileFailsWithInvalidQuantiles;
+    procedure TestQuantileFailsWithNonNumericColumn_ShouldThrowException;
+    procedure TestQuantileFailsWithInvalidQuantiles_ShouldThrowException;
 
     // Join Tests
     procedure TestJoin;
-    procedure TestJoinFailsWithNoCommonColumns;
+    procedure TestJoinFailsWithNoCommonColumns_ShouldThrowException;
     procedure TestAllJoinTypes;
 
     // Contains Tests
@@ -268,7 +268,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestCreateBlankMismatchedArrays;
+procedure TDuckDBDataFrameTest.TestCreateBlankMismatchedArrays_ShouldThrowException;
 begin
   try
     TDuckFrame.CreateBlank(
@@ -727,7 +727,7 @@ end;
 
 { Error Handling Tests }
 
-procedure TDuckDBDataFrameTest.TestInvalidColumnAccessFails;
+procedure TDuckDBDataFrameTest.TestInvalidColumnAccessFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
 begin
@@ -754,7 +754,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestInvalidRowAccessFails;
+procedure TDuckDBDataFrameTest.TestInvalidRowAccessFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
 begin
@@ -882,7 +882,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestAddColumnDuplicateFails;
+procedure TDuckDBDataFrameTest.TestAddColumnDuplicateFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
   i: integer;
@@ -912,7 +912,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestAddRowMismatchedValuesFails;
+procedure TDuckDBDataFrameTest.TestAddRowMismatchedValuesFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
   NewRow: array of variant;
@@ -958,7 +958,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestGetNonExistentColumnFails;
+procedure TDuckDBDataFrameTest.TestGetNonExistentColumnFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
   Column: TDuckDBColumn;
@@ -1069,7 +1069,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestOutOfRangeValuesByNameFails;
+procedure TDuckDBDataFrameTest.TestOutOfRangeValuesByNameFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
   Value: variant;
@@ -1115,7 +1115,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestOutOfRangeValuesFails;
+procedure TDuckDBDataFrameTest.TestOutOfRangeValuesFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
   Value: variant;
@@ -1201,7 +1201,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestMissingCSVFileFails;
+procedure TDuckDBDataFrameTest.TestMissingCSVFileFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
 begin
@@ -1397,7 +1397,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestMissingParquetFileFails;
+procedure TDuckDBDataFrameTest.TestMissingParquetFileFails_ShouldThrowException;
 var
   Frame: TDuckFrame;
   EmptyFiles: array of string;
@@ -1651,7 +1651,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestQuantileFailsWithNonNumericColumn;
+procedure TDuckDBDataFrameTest.TestQuantileFailsWithNonNumericColumn_ShouldThrowException;
 var
   Frame: TDuckFrame;
   Quantiles: array of Double;
@@ -1674,7 +1674,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestQuantileFailsWithInvalidQuantiles;
+procedure TDuckDBDataFrameTest.TestQuantileFailsWithInvalidQuantiles_ShouldThrowException;
 var
   Frame: TDuckFrame;
   Quantiles: array of Double;
@@ -1718,7 +1718,7 @@ begin
     JoinedFrame := Frame1.Join(Frame2, jmInner);
     try
       AssertEquals('Should have 1 row for inner join', 1, JoinedFrame.RowCount);
-      AssertEquals('Should have 4 columns', 4, JoinedFrame.ColumnCount);
+      AssertEquals('Should have 5 columns', 5, JoinedFrame.ColumnCount);
       AssertEquals('Should match on ID=1', 'John', 
         string(JoinedFrame.ValuesByName[0, 'Name']));
       AssertEquals('Should include city', 'New York', 
@@ -1742,7 +1742,7 @@ begin
   end;
 end;
 
-procedure TDuckDBDataFrameTest.TestJoinFailsWithNoCommonColumns;
+procedure TDuckDBDataFrameTest.TestJoinFailsWithNoCommonColumns_ShouldThrowException;
 var
   Frame1, Frame2: TDuckFrame;
 begin

@@ -1,5 +1,12 @@
 # 🦆 DuckDB for FreePascal: An Intuitive Database Wrapper
 
+![FreePascal](https://img.shields.io/badge/FreePascal-3.2.2+-blue.svg)
+![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-green.svg)
+![DuckDB](https://img.shields.io/badge/DuckDB-1.3.2-orange.svg)
+![License](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Version](https://img.shields.io/badge/Version-1.0.1-green.svg)
+
+
 A simple interface to work with DuckDB in FreePascal applications, featuring a DataFrame-like structure for handling query results similar to R or Python pandas.
 
 
@@ -31,15 +38,6 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
 
 This project is currently under active development. **Do expect** bugs, missing features and API changes.
 
-Current development focus:
-- [ ] Better DataFrame functionality
-- [ ] More examples
-
-Last tested with:
-- FreePascal 3.2.2
-- DuckDB 1.1.2
-- Lazarus 3.6
-- Win 11
 
 ## 🚀 Getting Started with DuckDB for FreePascal
 
@@ -48,8 +46,8 @@ This guide will help you get started with the DuckDB FreePascal wrapper, coverin
 ### 📋 Prerequisites
 
 - FreePascal 3.2.2 or later
-- Lazarus 3.6 (to run examples and tests)
-- DuckDB DLL v1.1.2 or later
+- Lazarus 4.0+ (to run examples and tests)
+- DuckDB DLL v1.3.2 or later
 
 ### 🔧Installation
 

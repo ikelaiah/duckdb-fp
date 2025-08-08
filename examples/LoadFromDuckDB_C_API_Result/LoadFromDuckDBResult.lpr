@@ -1,4 +1,3 @@
-```pascal
 program LoadFromDuckDBResult;
 
 {$mode objfpc}{$H+}{$J-}
@@ -108,4 +107,4 @@ begin
   WriteLn('Press enter to quit ...');
   ReadLn; // Wait for user input
 end.
-``` 
+

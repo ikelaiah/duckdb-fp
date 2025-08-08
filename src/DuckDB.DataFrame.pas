@@ -3092,14 +3092,17 @@ end;
 function TDuckFrame.ValueCounts(const ColumnName: string; 
   Normalize: Boolean = False): TDuckFrame;
 var
-  FreqMap: specialize TDictionary<Variant, Integer>;
+  FreqMap: specialize TDictionary<string, Integer>;
   Total: Integer;
   I: Integer;
   Value: Variant;
+  StrValue: string;
   ColIndex: Integer;
+  SortedResult: TDuckFrame;
+  KeysList: specialize TArray<string>;
 begin
   Result := nil;  // Initialize to nil for safety
-  FreqMap := specialize TDictionary<Variant, Integer>.Create;
+  FreqMap := specialize TDictionary<string, Integer>.Create;
   try
     // Find column
     ColIndex := FindColumnIndex(ColumnName);
@@ -3113,10 +3116,11 @@ begin
       Value := FColumns[ColIndex].Data[I];
       if not VarIsNull(Value) then
       begin
-        if FreqMap.ContainsKey(Value) then
-          FreqMap[Value] := FreqMap[Value] + 1
+        StrValue := VarToStr(Value);
+        if FreqMap.ContainsKey(StrValue) then
+          FreqMap[StrValue] := FreqMap[StrValue] + 1
         else
-          FreqMap.Add(Value, 1);
+          FreqMap.Add(StrValue, 1);
         Inc(Total);
       end;
     end;
@@ -3149,21 +3153,31 @@ begin
 
     Result.FRowCount := FreqMap.Count;
 
-    // Fill results
-    I := 0;
-    for Value in FreqMap.Keys do
+    // Fill results using safer array-based iteration
+    KeysList := FreqMap.Keys.ToArray;
+    for I := 0 to High(KeysList) do
     begin
-      Result.FColumns[0].Data[I] := Value;
-      Result.FColumns[1].Data[I] := FreqMap[Value];
+      Result.FColumns[0].Data[I] := KeysList[I];
+      Result.FColumns[1].Data[I] := FreqMap[KeysList[I]];
       if Normalize then
-        Result.FColumns[2].Data[I] := (FreqMap[Value] / Total) * 100
+        Result.FColumns[2].Data[I] := (FreqMap[KeysList[I]] / Total) * 100
       else
-        Result.FColumns[2].Data[I] := FreqMap[Value];
-      Inc(I);
+        Result.FColumns[2].Data[I] := FreqMap[KeysList[I]];
     end;
 
     // Sort by count descending
-    Result := Result.Sort('Count', False);
+    SortedResult := Result.Sort('Count', False);
+    try
+      // Copy sorted data back to original result
+      for I := 0 to Result.FRowCount - 1 do
+      begin
+        Result.FColumns[0].Data[I] := SortedResult.FColumns[0].Data[I];
+        Result.FColumns[1].Data[I] := SortedResult.FColumns[1].Data[I];
+        Result.FColumns[2].Data[I] := SortedResult.FColumns[2].Data[I];
+      end;
+    finally
+      SortedResult.Free;
+    end;
   except
     FreeAndNil(Result);  // Clean up on error
     raise;
@@ -3293,7 +3307,8 @@ end;
 procedure TDuckFrame.PerformLeftJoin(Result: TDuckFrame; Other: TDuckFrame;
   const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 var
-  I, J, K, ResultRow: Integer;
+  I, J, K, L, ResultRow: Integer;
+  RightColIndex: Integer;
   HasMatch: Boolean;
 begin
   // Pre-allocate for worst case
@@ -3330,10 +3345,18 @@ begin
         // Copy non-common columns from right frame
         for K := 0 to High(Other.FColumns) do
           if not Contains(CommonCols, Other.FColumns[K].Name) then
-            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+          begin
+            // Find correct right column index by counting non-common columns
+            RightColIndex := Length(FColumns);
+            for L := 0 to K - 1 do
+              if not Contains(CommonCols, Other.FColumns[L].Name) then
+                Inc(RightColIndex);
+            Result.FColumns[RightColIndex].Data[ResultRow] := 
               Other.FColumns[K].Data[J];
+          end;
               
         Inc(Result.FRowCount);
+        Break; // Exit inner loop after first match - this is the key fix!
       end;
     end;
     
@@ -3356,7 +3379,8 @@ end;
 procedure TDuckFrame.PerformInnerJoin(Result: TDuckFrame; Other: TDuckFrame;
   const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 var
-  I, J, K, ResultRow: Integer;
+  I, J, K, L, ResultRow: Integer;
+  RightColIndex: Integer;
   IsMatch: Boolean;
 begin
   // Pre-allocate for worst case
@@ -3390,8 +3414,15 @@ begin
         // Copy non-common columns from right frame
         for K := 0 to High(Other.FColumns) do
           if not Contains(CommonCols, Other.FColumns[K].Name) then
-            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+          begin
+            // Find correct right column index by counting non-common columns
+            RightColIndex := Length(FColumns);
+            for L := 0 to K - 1 do
+              if not Contains(CommonCols, Other.FColumns[L].Name) then
+                Inc(RightColIndex);
+            Result.FColumns[RightColIndex].Data[ResultRow] := 
               Other.FColumns[K].Data[J];
+          end;
               
         Inc(Result.FRowCount);
       end;
@@ -3401,7 +3432,8 @@ end;
 procedure TDuckFrame.PerformRightJoin(Result: TDuckFrame; Other: TDuckFrame;
   const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 var
-  I, J, K, ResultRow: Integer;
+  I, J, K, L, ResultRow: Integer;
+  RightColIndex: Integer;
   HasMatch: Boolean;
 begin
   // Pre-allocate for worst case
@@ -3438,10 +3470,18 @@ begin
         // Copy non-common columns from right frame
         for K := 0 to High(Other.FColumns) do
           if not Contains(CommonCols, Other.FColumns[K].Name) then
-            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+          begin
+            // Find correct right column index by counting non-common columns
+            RightColIndex := Length(FColumns);
+            for L := 0 to K - 1 do
+              if not Contains(CommonCols, Other.FColumns[L].Name) then
+                Inc(RightColIndex);
+            Result.FColumns[RightColIndex].Data[ResultRow] := 
               Other.FColumns[K].Data[J];
+          end;
               
         Inc(Result.FRowCount);
+        Break; // Exit inner loop after first match - critical fix!
       end;
     end;
     
@@ -3453,11 +3493,18 @@ begin
       for K := 0 to High(FColumns) do
         Result.FColumns[K].Data[ResultRow] := Null;
         
-      // Copy right frame columns
+      // Copy right frame columns with correct indexing
       for K := 0 to High(Other.FColumns) do
         if not Contains(CommonCols, Other.FColumns[K].Name) then
-          Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+        begin
+          // Find correct right column index by counting non-common columns
+          RightColIndex := Length(FColumns);
+          for L := 0 to K - 1 do
+            if not Contains(CommonCols, Other.FColumns[L].Name) then
+              Inc(RightColIndex);
+          Result.FColumns[RightColIndex].Data[ResultRow] := 
             Other.FColumns[K].Data[J];
+        end;
             
       Inc(Result.FRowCount);
     end;
@@ -3467,7 +3514,8 @@ end;
 procedure TDuckFrame.PerformFullJoin(Result: TDuckFrame; Other: TDuckFrame;
   const CommonCols: array of string; const ColMap: array of TJoinColumnMap);
 var
-  I, J, K, ResultRow: Integer;
+  I, J, K, L, ResultRow: Integer;
+  RightColIndex: Integer;
   MatchedRight: array of Boolean;
   HasMatch: Boolean;
 begin
@@ -3510,10 +3558,18 @@ begin
         // Copy non-common columns from right frame
         for K := 0 to High(Other.FColumns) do
           if not Contains(CommonCols, Other.FColumns[K].Name) then
-            Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+          begin
+            // Find correct right column index by counting non-common columns
+            RightColIndex := Length(FColumns);
+            for L := 0 to K - 1 do
+              if not Contains(CommonCols, Other.FColumns[L].Name) then
+                Inc(RightColIndex);
+            Result.FColumns[RightColIndex].Data[ResultRow] := 
               Other.FColumns[K].Data[J];
+          end;
               
         Inc(Result.FRowCount);
+        Break; // Exit inner loop after first match - critical fix!
       end;
     end;
     
@@ -3542,11 +3598,18 @@ begin
       for K := 0 to High(FColumns) do
         Result.FColumns[K].Data[ResultRow] := Null;
         
-      // Copy right frame columns
+      // Copy right frame columns with correct indexing
       for K := 0 to High(Other.FColumns) do
         if not Contains(CommonCols, Other.FColumns[K].Name) then
-          Result.FColumns[Length(FColumns) + K].Data[ResultRow] := 
+        begin
+          // Find correct right column index by counting non-common columns
+          RightColIndex := Length(FColumns);
+          for L := 0 to K - 1 do
+            if not Contains(CommonCols, Other.FColumns[L].Name) then
+              Inc(RightColIndex);
+          Result.FColumns[RightColIndex].Data[ResultRow] := 
             Other.FColumns[K].Data[J];
+        end;
             
       Inc(Result.FRowCount);
     end;
