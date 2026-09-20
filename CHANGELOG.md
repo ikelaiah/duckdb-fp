@@ -5,6 +5,35 @@ All notable changes to the DuckDB Free Pascal Wrapper project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.5] - 2026-09-21
+
+### 🚀 Major Upgrade: DuckDB API 1.5.5 Compatibility
+
+The bundled DuckDB library, C header, and Pascal bindings have been upgraded from 1.3.2 to 1.5.5.
+
+### Added
+- **Complete C API bindings**
+  - Regenerated `src/libduckdb.pas` from the DuckDB 1.5.5 C header; all 546 functions and 108 types are now available
+  - New COPY function API (`duckdb_copy_function_*`), virtual file system API (`duckdb_file_system_*`, `duckdb_file_handle_*`), catalog API (`duckdb_catalog_*`), logging API (`duckdb_log_storage_*`), and custom configuration options (`duckdb_config_option_*`)
+  - New cast function API (`duckdb_cast_function_*`), selection vectors (`duckdb_selection_vector`), table descriptions (`duckdb_table_description_*`), and scalar function init/state helpers
+  - New types: `DUCKDB_TYPE_GEOMETRY` (40), `DUCKDB_TYPE_VARIANT` (41), plus file flag, config option scope, and catalog entry type enums
+- **Version smoke test**
+  - Added `TestDuckDBLibraryVersion` to verify the loaded DuckDB library reports v1.5.x
+
+### Changed
+- **Renamed API** (`varint` to `bignum`)
+  - `duckdb_varint` → `duckdb_bignum`
+  - `DUCKDB_TYPE_VARINT` → `DUCKDB_TYPE_BIGNUM`
+  - `duckdb_create_varint` → `duckdb_create_bignum`
+  - `duckdb_get_varint` → `duckdb_get_bignum`
+- **Bundled DuckDB binaries** updated to v1.5.5 in `dll/`, `tests/`, and all `examples/` directories
+- **C header** renamed to `c_header/duckdb_1.5.5.h`
+- **Documentation** updated for DuckDB v1.5.5 prerequisites
+
+### Verified
+- Test suite: 59 tests run, 13 expected error tests, 0 failures
+- All examples and the Lazarus package compile against the new bindings
+
 ## [1.0.1] - 2025-08-08
 
 ### 🚀 Major Upgrade: DuckDB API 1.3.2 Compatibility

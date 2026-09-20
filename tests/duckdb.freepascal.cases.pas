@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, fpcunit, testutils, testregistry, DuckDB.DataFrame,
-  Variants, DuckDB.Wrapper, DateUtils;
+  Variants, DuckDB.Wrapper, DateUtils, libduckdb;
 
 type
   { TDuckDBDataFrameTest }
@@ -31,6 +31,9 @@ type
     procedure SetUp; override;
     procedure TearDown; override;
   published
+    // Library Tests
+    procedure TestDuckDBLibraryVersion;
+
     // Constructor Tests
     procedure TestCreateBlank;
     procedure TestCreateBlankMismatchedArrays_ShouldThrowException;
@@ -248,6 +251,17 @@ begin
           VarToStr(Expected.Values[Row, Col]), VarToStr(Actual.Values[Row, Col]));
     end;
   end;
+end;
+
+{ Library Tests }
+
+procedure TDuckDBDataFrameTest.TestDuckDBLibraryVersion;
+var
+  Version: string;
+begin
+  Version := string(duckdb_library_version());
+  AssertTrue('Expected DuckDB v1.5.x, got: ' + Version,
+    Pos('v1.5', Version) = 1);
 end;
 
 { Constructor Tests }

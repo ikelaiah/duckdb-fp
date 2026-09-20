@@ -7,7 +7,7 @@ Thank you for your interest in contributing to the DuckDB FreePascal wrapper! Th
 ### Prerequisites
 - FreePascal 3.2.2 or later
 - Lazarus 4.0+ (recommended for development)
-- DuckDB DLL v1.3.2 or later
+- DuckDB DLL v1.5.5 or later
 - Git for version control
 
 ### Setting Up Development Environment
@@ -90,7 +90,7 @@ examples/
 
 ### Compatibility
 - Maintain compatibility with FreePascal 3.2.2+
-- Support DuckDB 1.3.2+
+- Support DuckDB 1.5.5+
 - Consider cross-platform compatibility (Windows, Linux, macOS)
 
 ## 📝 Pull Request Process
