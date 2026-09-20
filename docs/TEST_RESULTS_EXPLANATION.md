@@ -91,11 +91,10 @@ Number of failures:  0   <- No actual failures!
 - ✅ **0 failures** = All functional tests passing
 - ✅ **100% success rate** = Production ready!
 
-### Key Improvements in v1.0.1:
-- Fixed all join operation bugs (Inner, Left, Right, Full)
-- Resolved all access violations
-- Corrected column indexing and row counting
-- Enhanced error handling and test clarity
+### Key Improvements in v1.5.5.1:
+- CI added: builds the package and test suite, runs the tests, and compiles all examples
+- Example build script added: `scripts/build-examples.ps1` collects runnable binaries in `example-bin/`
+- Documentation refreshed; project status updated to stable
 - Full DuckDB 1.5.5 API compatibility
 
 ## Conclusion

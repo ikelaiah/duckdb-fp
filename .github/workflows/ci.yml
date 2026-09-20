@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Windows / Lazarus ${{ matrix.lazarus-version }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # "4.0" verifies the minimum documented version, "stable" tracks the latest release
+        lazarus-version: [ "4.0", "stable" ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Lazarus and FPC
+        uses: gcarreno/setup-lazarus@3ee9d77e0c771b37c1069f218cb68bd5ce7c30fe # v3.4.1
+        with:
+          lazarus-version: ${{ matrix.lazarus-version }}
+
+      - name: Show toolchain versions
+        shell: pwsh
+        run: |
+          lazbuild --version
+          fpc -iV
+
+      - name: Build Lazarus package
+        run: lazbuild -B package/lazarus/duckdb_fp.lpk
+
+      - name: Build test suite
+        run: lazbuild -B tests/DuckDB.FP.Tests.lpi
+
+      - name: Run test suite
+        shell: pwsh
+        run: |
+          $output = & .\tests\DuckDB.FP.Tests.exe -a --format=plain 2>&1 | Out-String
+          $output
+
+          if ($output -notmatch '(?m)^Number of run tests:\s+59\s*$') {
+            throw 'Could not find the expected "Number of run tests: 59" summary.'
+          }
+          if ($output -notmatch '(?m)^Number of failures:\s+0\s*$') {
+            throw 'Test failures detected.'
+          }
+          if ($output -notmatch '(?m)^Number of errors:\s+13\s*$') {
+            throw 'Expected 13 intentional exception tests.'
+          }
+
+          Write-Host 'All tests passed (59 run, 13 expected exceptions, 0 failures).'
+          exit 0
+
+      - name: Build all examples
+        shell: pwsh
+        run: .\scripts\build-examples.ps1 -Clean
+
+      - name: Upload example binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: example-bin-${{ matrix.lazarus-version }}
+          path: example-bin/
+          if-no-files-found: error
+          retention-days: 14

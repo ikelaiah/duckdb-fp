@@ -4,19 +4,20 @@
 ![Lazarus](https://img.shields.io/badge/Lazarus-4.0+-green.svg)
 ![DuckDB](https://img.shields.io/badge/DuckDB-1.5.5-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Version](https://img.shields.io/badge/Version-1.5.5-green.svg)
+![Version](https://img.shields.io/badge/Version-1.5.5.1-green.svg)
+[![CI](https://github.com/ikelaiah/duckdb-fp/actions/workflows/ci.yml/badge.svg)](https://github.com/ikelaiah/duckdb-fp/actions/workflows/ci.yml)
 
 
 A simple interface to work with DuckDB in FreePascal applications, featuring a DataFrame-like structure for handling query results similar to R or Python pandas.
 
-> **Versioning:** duckdb-fp releases track the DuckDB version they bundle — release `1.5.5` bundles DuckDB `v1.5.5`.
+> **Versioning:** duckdb-fp releases track the DuckDB version they bundle — release `1.5.5` bundles DuckDB `v1.5.5`. Wrapper-only fix releases add a fourth digit (for example `1.5.5.1`).
 
 
 ## 📚 Table of Contents
 
 - [🦆 DuckDB for FreePascal: An Intuitive Database Wrapper](#-duckdb-for-freepascal-an-intuitive-database-wrapper)
   - [📚 Table of Contents](#-table-of-contents)
-  - [⚠️ Work in Progress](#️-work-in-progress)
+  - [✅ Project Status](#-project-status)
   - [🚀 Getting Started with DuckDB for FreePascal](#-getting-started-with-duckdb-for-freepascal)
     - [📋 Prerequisites](#-prerequisites)
     - [🔧Installation](#installation)
@@ -29,6 +30,7 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
       - [🔗 Combining DataFrames](#-combining-dataframes)
     - [🚨 Error Handling](#-error-handling)
     - [🚶 Next Steps](#-next-steps)
+  - [🧱 Building the Examples](#-building-the-examples)
   - [📑 API Reference](#-api-reference)
   - [✨Features](#features)
   - [🤝 Contributing](#-contributing)
@@ -36,9 +38,16 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
   - [🙏 Acknowledgments](#-acknowledgments)
 
 
-## ⚠️ Work in Progress
+## ✅ Project Status
 
-This project is currently under active development. **Do expect** bugs, missing features and API changes.
+duckdb-fp is **stable and maintained**. Releases track the DuckDB version they bundle, so `1.5.5` is built and tested against DuckDB `v1.5.5`.
+
+- Complete DuckDB 1.5.5 C API bindings (546 functions / 108 types)
+- Test suite: **59 tests, 13 intentional exception tests, 0 failures**
+- CI builds the package and test suite, runs the tests, and compiles all examples on every push and pull request
+- Verified with FreePascal 3.2.2 and Lazarus 4.8 on Windows x64
+
+If you run into a problem, please [open an issue](https://github.com/ikelaiah/duckdb-fp/issues) — bug reports and contributions are welcome.
 
 
 ## 🚀 Getting Started with DuckDB for FreePascal
@@ -48,7 +57,7 @@ This guide will help you get started with the DuckDB FreePascal wrapper, coverin
 ### 📋 Prerequisites
 
 - FreePascal 3.2.2 or later
-- Lazarus 4.0+ (to run examples and tests)
+- Lazarus 4.0+ (to run examples and tests; developed and tested with 4.8)
 - DuckDB DLL v1.5.5 or later
 
 ### 🔧Installation
@@ -261,6 +270,23 @@ end;
 - Check the [examples folder](examples/) for more detailed examples
 - Read the API documentation for other features
 - Check the [TESTING.md](docs/TESTING.md) file for information on how to run and maintain the test suite
+
+## 🧱 Building the Examples
+
+A single script builds every example project and collects the binaries, the DuckDB library, and the sample datasets into `example-bin/`:
+
+```powershell
+pwsh -File scripts/build-examples.ps1
+```
+
+Options:
+
+```powershell
+# release builds, fresh output folder, custom lazbuild
+pwsh -File scripts/build-examples.ps1 -BuildMode Release -Clean -LazBuild C:\lazarus\lazbuild.exe
+```
+
+The compiled executables are placed in `example-bin/` together with `duckdb.dll` and `sample_data/`, so they can be run directly. A `build.log` with the full compiler output is written there as well.
 
 ## 📑 API Reference
 
