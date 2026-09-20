@@ -6,7 +6,7 @@ Thank you for your interest in contributing to the DuckDB FreePascal wrapper! Th
 
 ### Prerequisites
 - FreePascal 3.2.2 or later
-- Lazarus 4.0+ (recommended for development)
+- Lazarus 4.0+ (developed and tested with 4.8)
 - DuckDB DLL v1.5.5 or later
 - Git for version control
 
@@ -61,32 +61,62 @@ Thank you for your interest in contributing to the DuckDB FreePascal wrapper! Th
 ### File Organization
 ```
 src/
-├── DuckDB.Wrapper.pas      # Core DuckDB connection wrapper
-├── DuckDB.DataFrame.pas    # DataFrame implementation
-├── DuckDB.SampleData.pas   # Sample datasets
-└── libduckdb.pas          # DuckDB C API bindings
+├── DuckDB.Wrapper.pas           # Core DuckDB connection wrapper
+├── DuckDB.DataFrame.pas         # DataFrame implementation
+├── DuckDB.SampleData.pas        # Sample datasets
+└── libduckdb.pas                # DuckDB C API bindings (generated)
 
 tests/
-├── TestDuckDBWrapper.pas   # Unit tests for wrapper
-├── TestDataFrame.pas       # Unit tests for DataFrame
-└── TestRunner.pas         # Test runner
+├── DuckDB.FP.Tests.lpr          # Test runner program
+├── DuckDB.FP.Tests.lpi          # Test project
+└── duckdb.freepascal.cases.pas  # Test cases
 
 docs/
-├── DuckDB.Wrapper.md      # API documentation
-├── DuckDB.DataFrame.md    # DataFrame API docs
-└── DuckDB.SampleData.md   # Sample data docs
+├── DuckDB.Wrapper.md            # API documentation
+├── DuckDB.DataFrame.md          # DataFrame API docs
+├── DuckDB.SampleData.md         # Sample data docs
+├── TESTING.md                   # How to run the tests
+└── TEST_RESULTS_EXPLANATION.md  # How to read the test results
 
 examples/
-├── BasicUsage/            # Basic usage examples
-├── DataAnalysis/          # Data analysis examples
-└── FileHandling/          # File I/O examples
+├── Demo01/                      # 13 example projects
+├── DuckFrameFromCSV/
+└── ...
+
+scripts/
+└── build-examples.ps1           # Builds all examples into example-bin/
+
+package/lazarus/
+└── duckdb_fp.lpk                # Lazarus package
 ```
 
 ### Testing
-- Write unit tests for new features
+- Write unit tests for new features in `tests/duckdb.freepascal.cases.pas`
 - Ensure all existing tests pass
 - Test on multiple platforms if possible
 - Include edge cases and error conditions
+
+Run the full test suite with:
+
+```bash
+lazbuild -B tests/DuckDB.FP.Tests.lpi
+tests/DuckDB.FP.Tests.exe -a --format=plain
+```
+
+### Building All Examples
+
+Use the build script to compile every example into `example-bin/` (the DuckDB
+library and `sample_data/` are copied there too, so the binaries run as-is):
+
+```powershell
+pwsh -File scripts/build-examples.ps1
+```
+
+### Continuous Integration
+
+GitHub Actions (`.github/workflows/ci.yml`) builds the Lazarus package and test
+suite, runs the tests, and compiles all examples on every push to `main` and on
+every pull request. Please make sure the workflow is green before merging.
 
 ### Compatibility
 - Maintain compatibility with FreePascal 3.2.2+

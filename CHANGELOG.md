@@ -5,6 +5,36 @@ All notable changes to the DuckDB Free Pascal Wrapper project will be documented
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.5.1] - 2026-09-21
+
+### 📚 Documentation, CI, and Tooling
+
+A maintenance release with no library code changes: documentation is now accurate, continuous integration has been added, and all examples can be built with one command.
+
+### Added
+- **Continuous integration** (`.github/workflows/ci.yml`)
+  - Builds the Lazarus package and the test suite, runs the tests, and builds all examples on Windows
+  - Runs against Lazarus 4.0 (documented minimum) and the current stable release
+  - Uploads the compiled examples as a build artifact
+- **Example build script** (`scripts/build-examples.ps1`)
+  - Compiles all 13 examples into `example-bin/`, copying `duckdb.dll` and `sample_data/` so the binaries run as-is
+  - Writes the full compiler output to `example-bin/build.log`
+- **README project status section** replacing the "Work in Progress" notice, plus a CI badge
+
+### Changed
+- **Documentation accuracy**
+  - Version badges and package metadata updated to `1.5.5.1`
+  - Lazarus requirement clarified: 4.0+ supported, developed and tested with 4.8
+  - Fixed the stale file layout in `CONTRIBUTING.md` (real test files, examples, docs, and scripts) and documented the example build script
+  - `docs/TESTING.md` now documents CI and uses a full rebuild command
+
+### Fixed
+- `tests/DuckDB.FP.Tests.lpi` now builds from a clean checkout: the default build mode was missing the `..\src` unit path and `..\dll` library path (previously the test project only built when stale compiler units were present)
+
+### Verified
+- Tests: 59 tests run, 13 expected error tests, 0 failures
+- All 13 examples build and run from `example-bin/`
+
 ## [1.5.5] - 2026-09-21
 
 ### 🚀 Major Upgrade: DuckDB API 1.5.5 Compatibility

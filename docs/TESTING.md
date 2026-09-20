@@ -12,16 +12,22 @@ This document describes how to run and maintain the test suite for the DuckDB fo
 
 ## Pre-requisites
 
-- Lazarus 4.0 or higher
+- Lazarus 4.0 or higher (developed and tested with 4.8)
 - FPC (Free Pascal Compiler) version 3.2.2 or higher, which includes `fpcunit` package. 
 - DuckDB DLL v1.5.5 or later (bundled in `tests/`)
+
+## Continuous Integration
+
+The test suite runs automatically in GitHub Actions on every push to `main` and
+on every pull request — see `.github/workflows/ci.yml`. The workflow builds the
+Lazarus package, builds and runs the tests, and compiles all examples.
 
 ## Compilation
 
 From the `tests/` directory:
 
 ```bash
-/path/to/Lazarus/lazbuild.exe DuckDB.FP.Tests.lpi
+/path/to/Lazarus/lazbuild.exe -B DuckDB.FP.Tests.lpi
 ```
 
 ## Running Tests
