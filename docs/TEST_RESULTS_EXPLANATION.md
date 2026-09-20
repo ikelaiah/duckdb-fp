@@ -5,7 +5,7 @@
 When you run the DuckDB Free Pascal test suite, you will see results like:
 
 ```
-Number of run tests: 58
+Number of run tests: 59
 Number of errors:    13
 Number of failures:  0
 ```
@@ -61,12 +61,12 @@ These are regular tests that verify functionality works correctly:
 
 🎉 **No failures!** All issues have been resolved!
 
-## Current Status After DuckDB 1.3.2 Upgrade
+## Current Status After DuckDB 1.5.5 Upgrade
 
-- **Total Tests:** 58
-- **All Tests Passing:** 58 tests (100% success rate!)
+- **Total Tests:** 59
+- **All Tests Passing:** 59 tests (100% success rate!)
 - **Expected Error Tests:** 13 tests (100% working correctly)
-- **Functional Tests:** 45 tests (100% passing)
+- **Functional Tests:** 46 tests (100% passing)
 - **Real Issues:** 0 tests
 - **Success Rate:** 100% 🎉
 
@@ -81,7 +81,7 @@ When you see test output:
 
 ### Perfect Test Results Look Like This:
 ```
-Number of run tests: 58
+Number of run tests: 59
 Number of errors:    13  <- All expected error tests
 Number of failures:  0   <- No actual failures!
 ```
@@ -96,7 +96,7 @@ Number of failures:  0   <- No actual failures!
 - Resolved all access violations
 - Corrected column indexing and row counting
 - Enhanced error handling and test clarity
-- Full DuckDB 1.3.2 API compatibility
+- Full DuckDB 1.5.5 API compatibility
 
 ## Conclusion
 
