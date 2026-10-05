@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/duckdb-fp-hero.svg" alt="duckdb-fp — a DuckDB wrapper for Free Pascal" width="820">
+</p>
+
 # 🦆 DuckDB for FreePascal: An Intuitive Database Wrapper
 
 ![FreePascal](https://img.shields.io/badge/FreePascal-3.2.2+-blue.svg)
@@ -12,6 +16,9 @@ A simple interface to work with DuckDB in FreePascal applications, featuring a D
 
 > **Versioning:** duckdb-fp releases track the DuckDB version they bundle — release `1.5.5` bundles DuckDB `v1.5.5`. Wrapper-only fix releases add a fourth digit (for example `1.5.5.1`).
 
+<p align="center">
+  <img src="docs/images/duckdb-fp-quickstart.svg" alt="Quickstart: load a CSV into a TDuckFrame, print it, and report the row count" width="820">
+</p>
 
 ## 📚 Table of Contents
 

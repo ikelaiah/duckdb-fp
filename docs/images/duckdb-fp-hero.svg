@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-labelledby="title description">
+  <title id="title">duckdb-fp</title>
+  <desc id="description">duckdb-fp, a DuckDB wrapper for Free Pascal.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111a2d"/>
+      <stop offset="1" stop-color="#080d18"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="accentRule" gradientUnits="userSpaceOnUse" x1="246" y1="0" x2="380" y2="0">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#8ba3c7" stroke-width="1" opacity=".055"/>
+    </pattern>
+    <clipPath id="frame">
+      <rect x="1" y="1" width="958" height="238" rx="28"/>
+    </clipPath>
+  </defs>
+
+  <rect x="1" y="1" width="958" height="238" rx="28" fill="url(#background)" stroke="#263653" stroke-width="2"/>
+  <rect x="688" y="1" width="271" height="238" fill="url(#grid)" clip-path="url(#frame)"/>
+
+  <g transform="translate(42 38)">
+    <rect width="164" height="164" rx="32" fill="url(#accent)"/>
+    <g fill="none" stroke="#0b1220" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="36" y="42" width="92" height="80" rx="12"/>
+      <path d="M36 70H128"/>
+      <path d="M82 70V122"/>
+    </g>
+  </g>
+
+  <g font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="244" y="112" fill="#f8fafc" font-size="66" font-weight="700" letter-spacing="-2">duckdb<tspan fill="#67e8f9">-fp</tspan></text>
+    <text x="248" y="153" fill="#a8b5ca" font-size="19" font-weight="600" letter-spacing="3">DUCKDB WRAPPER FOR FREE PASCAL</text>
+  </g>
+
+  <path d="M246 181H874" stroke="#263653" stroke-width="2"/>
+  <path d="M246 181H380" stroke="url(#accentRule)" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="874" cy="181" r="3" fill="#67e8f9" opacity=".8"/>
+</svg>
